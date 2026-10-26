@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
+}
+
+model Analysis {
+  id              String   @id @default(uuid())
+  title           String
+  category        String   @default("code")
+  previousContent String
+  newContent      String
+  diffSummary     String
+  riskLevel       String   // LOW, MEDIUM, HIGH, CRITICAL
+  riskScore       Int      // 0 - 100
+  impactAreas     String   // JSON string
+  recommendations String   // JSON string
+  createdAt       DateTime @default(now())
+}

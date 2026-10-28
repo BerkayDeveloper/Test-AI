@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -17,8 +17,8 @@ model Analysis {
   id              String   @id @default(uuid())
   title           String
   category        String   @default("code")
-  previousContent String
-  newContent      String
+  previousContent String   @default("")
+  newContent      String   @default("")
   diffSummary     String
   riskLevel       String   // LOW, MEDIUM, HIGH, CRITICAL
   riskScore       Int      // 0 - 100

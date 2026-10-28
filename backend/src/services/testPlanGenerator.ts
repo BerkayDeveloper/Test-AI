@@ -1,0 +1,252 @@
+import { TestCase } from "../types";
+import { parseCodeEntities, detectLanguage, computeDiffStats } from "./codeAnalyzerService";
+
+export interface GeneratedPlan {
+  overview: string;
+  detectedLanguage: string;
+  totalTestCount: number;
+  criticalTestCount: number;
+  testCases: TestCase[];
+}
+
+export function generateUniversalTestPlan(
+  title: string,
+  category: string,
+  oldText: string,
+  newText: string
+): GeneratedPlan {
+  const codeToAnalyze = newText && newText.trim().length > 0 ? newText : oldText;
+  const { language: detectedLanguage } = detectLanguage(codeToAnalyze);
+  const entities = parseCodeEntities(codeToAnalyze);
+  const diffStats = computeDiffStats(oldText, newText);
+
+  const testCases: TestCase[] = [];
+  let counter = 1;
+  const nextId = () => `TC-${String(counter++).padStart(3, "0")}`;
+
+  const classes = entities.filter((e) => e.kind === "class");
+  const methods = entities.filter((e) => e.kind === "method" || e.kind === "function");
+
+  // Sınıflara göre akıllı test üretimi
+  if (classes.length > 0) {
+    for (const cls of classes) {
+      const snippet = cls.logicSnippet || "";
+      const lowerCls = cls.name.toLowerCase();
+
+      // 1. Can / Sağlık / Hasar Sistemi (Health, Damage, Heal)
+      if (lowerCls.includes("health") || snippet.includes("CurrentHealth") || snippet.includes("TakeDamage") || snippet.includes("Heal")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Can Değerleri, Hasar Alma (Damage) ve İyileşme (Heal) Mantığı Testi`,
+          type: "Birim / Oyun Mantığı Testi (Unit/Gameplay)",
+          priority: "P1 (Kritik)",
+          preconditions: `${cls.name} nesnesi sahneye veya test ortamına yüklenmeli (Başlangıç Canı: maxHealth).`,
+          steps: [
+            `Adım 1: ${cls.name} Awake/Start anında 'CurrentHealth' değerinin 'maxHealth' değerine eşit başladığını doğrulayın.`,
+            `Adım 2: Pozitif hasar ile 'TakeDamage(amount)' çağırın ve canın tam olarak hasar miktarı kadar azaldığını teyit edin.`,
+            `Adım 3: 'TakeDamage(maxHealth + 100)' çağırarak canın 0'ın altına düşemeyeceğini (Mathf.Max(0, ...)) ve 'IsDead' durumunun 'true' olduğunu kontrol edin.`,
+            `Adım 4: Karakter öldükten (IsDead = true) sonra 'TakeDamage' ve 'Heal' çağrıldığında canın değişmediğini (ölü karakterin hasar almadığını veya canlanmadığını) test edin.`,
+            `Adım 5: Canı eksilmiş karakterde 'Heal(amount)' çağırarak canın arttığını, ancak asla 'maxHealth' tavanını aşamadığını doğrulayın.`,
+          ],
+          expectedResult: "Can asla negatif değer alamaz ve maxHealth değerini geçemez; karakter öldüğünde ek hasar veya iyileşme etkisiz kalır.",
+        });
+      }
+
+      // 2. Envanter / Liste / Kapasite Sistemi (Inventory, Items, Add/Remove)
+      else if (lowerCls.includes("inventory") || snippet.includes("capacity") || snippet.includes("AddItem") || snippet.includes("items")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Envanter Kapasite Sınırı, Eşya Ekleme/Silme ve Doğrulama Testi`,
+          type: "İş Mantığı / Sınır Değer Testi (Boundary)",
+          priority: "P2 (Yüksek)",
+          preconditions: `${cls.name} bileşeni başlatılmış olmalı (Kapasite: capacity).`,
+          steps: [
+            `Adım 1: Geçersiz girdi ile 'AddItem(null)' veya 'AddItem("")' çağırarak fonksiyonun 'false' döndüğünü ve envantere boş eşya eklenmediğini teyit edin.`,
+            `Adım 2: Geçerli bir eşya ekleyin ('AddItem("Sword")') ve fonksiyonun 'true' döndüğünü, 'ItemCount' değerinin 1 arttığını kontrol edin.`,
+            `Adım 3: Kapasite sınırına ulaşana kadar eşya ekleyin. Kapasite dolduktan sonra yeni bir 'AddItem' çağrıldığında eklemenin reddedildiğini (false) doğrulayın.`,
+            `Adım 4: Var olan bir eşya için 'RemoveItem("Sword")' çağırarak silindiğini (true), listede olmayan bir eşya için silmenin 'false' döndüğünü kontrol edin.`,
+          ],
+          expectedResult: "Boş/geçersiz veriler envantere eklenemez; envanter kapasitesi aşılamaz ve eşya silme işlemleri doğru durum kodlarını üretir.",
+        });
+      }
+
+      // 3. Duraklatma / Zaman Ölçeği (PauseManager, Time.timeScale)
+      else if (lowerCls.includes("pause") || snippet.includes("Time.timeScale") || snippet.includes("SetPaused")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Oyun Duraklatma (Pause), Zaman Ölçeği (TimeScale) ve Menü Kontrol Testi`,
+          type: "Sistem ve Girdi Testi (Input & State)",
+          priority: "P2 (Yüksek)",
+          preconditions: "Oyun sahnede normal hızda (Time.timeScale = 1) çalışıyor olmalı.",
+          steps: [
+            `Adım 1: Escape tuşuna basarak veya 'SetPaused(true)' çağırarak oyunun duraklatılmasını tetikleyin.`,
+            `Adım 2: 'Time.timeScale' değerinin tam olarak '0f' olduğunu ve duraklatma menüsü GameObject'inin aktifleştiğini (SetActive(true)) doğrulayın.`,
+            `Adım 3: Tekrar tetikleyerek 'SetPaused(false)' durumuna getirin; 'Time.timeScale' değerinin '1f' olduğunu ve menünün kapandığını kontrol edin.`,
+            `Adım 4: Sahne değiştiğinde veya bileşen yok edildiğinde (OnDestroy) 'Time.timeScale' değerinin 1f'e geri getirildiğini ve oyunun donuk kalmadığını test edin.`,
+          ],
+          expectedResult: "Duraklatıldığında oyun içi fizik ve zaman tamamen durur; menü açılır; devam edildiğinde ve sahne kapandığında zaman ölçeği normale döner.",
+        });
+      }
+
+      // 4. Cüzdan, Para ve Toplanabilir Nesneler (Wallet, Coins, Collect)
+      else if (lowerCls.includes("wallet") || lowerCls.includes("coin") || snippet.includes("AddCoins") || snippet.includes("Collect")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Para/Altın Toplama Mantığı, Çift Toplama Engeli ve Bakiye Testi`,
+          type: "Birim / Oynanış Testi (Gameplay Unit)",
+          priority: "P2 (Yüksek)",
+          preconditions: "PlayerWallet bileşeni ve sahnede aktif CoinPickup nesnesi hazır olmalı.",
+          steps: [
+            `Adım 1: PlayerWallet başlangıç bakiyesinin (Balance) 0 veya tanımlı değerde olduğunu kontrol edin.`,
+            `Adım 2: 'AddCoins(-50)' veya sıfır miktar gönderildiğinde bakiyenin negatif yönde değişmediğini doğrulayın.`,
+            `Adım 3: Coin nesnesi üzerinden 'Collect(wallet)' çağırın. Cüzdan bakiyesinin 'coinValue' kadar arttığını ve coin nesnesinin gizlendiğini (SetActive(false)) kontrol edin.`,
+            `Adım 4: Zaten toplanmış (collected = true) olan bir coin nesnesi üzerinden tekrar 'Collect' çağrıldığında 'false' döndüğünü ve mükerrer para eklenmediğini test edin.`,
+          ],
+          expectedResult: "Bir altın nesnesi yalnızca bir kez toplanabilir; cüzdana yalnızca pozitif miktarlar eklenir.",
+        });
+      }
+
+      // 5. Checkpoint ve Yeniden Doğma (Respawn)
+      else if (lowerCls.includes("checkpoint") || snippet.includes("Respawn") || snippet.includes("spawnPoint")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Kayıt Noktası (Checkpoint) Kaydetme ve Yeniden Doğma (Respawn) Testi`,
+          type: "Konum ve Durum Doğrulama Testi",
+          priority: "P3 (Orta)",
+          preconditions: "Player nesnesi ve farklı koordinatlarda Checkpoint nesneleri sahnede konumlandırılmalı.",
+          steps: [
+            `Adım 1: Başlangıçta spawnPoint noktasının otomatik olarak checkpoint olarak kaydedildiğini kontrol edin.`,
+            `Adım 2: 'SaveCheckpoint(point)' metoduna 'null' parametre verildiğinde oyunun çökmediğini teyit edin.`,
+            `Adım 3: Karakteri yeni bir koordinata götürüp yeni bir checkpoint tetikleyin.`,
+            `Adım 4: 'Respawn()' metodunu çağırın ve oyuncunun tam olarak kaydedilen Vector3 pozisyonuna ve rotasyonuna ışınlandığını doğrulayın.`,
+          ],
+          expectedResult: "Karakter öldüğünde veya respawn çağrıldığında en son ulaşılan checkpoint koordinatlarında doğru rotasyonla doğmalıdır.",
+        });
+      }
+
+      // 6. Sepet / Ödeme / Cart
+      else if (lowerCls.includes("cart") || lowerCls.includes("payment") || lowerCls.includes("order") || snippet.includes("coupon") || snippet.includes("discount")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Sepet Toplam Tutarı, İndirim Kuponu ve Minimum Tutar Validasyonu`,
+          type: "İş Mantığı / Finans Testi (Business Logic)",
+          priority: "P1 (Kritik)",
+          preconditions: `${cls.name} servisi aktif ve boş bir sepet oluşturulmuş olmalı.`,
+          steps: [
+            "Adım 1: Negatif fiyatlı veya 0 adetli ürün eklemeyi deneyin, sistemin hata fırlattığını doğrulayın.",
+            "Adım 2: Geçerli ürünler ekleyerek sepet toplamının doğru hesaplandığını teyit edin.",
+            "Adım 3: Minimum sepet tutarı karşılanmadığında kupon kodunun reddedildiğini kontrol edin.",
+            "Adım 4: Geçerli kupon uygulandığında indirimin doğru oranda (%20 vb.) düşüldüğünü ve toplamın asla 0'ın altına inemeyeceğini doğrulayın.",
+          ],
+          expectedResult: "Fiyat ve adet kontrolleri hatasız çalışır, kupon indirimleri kural ihlali olmadan uygulanır.",
+        });
+      }
+
+      // 7. Kimlik Doğrulama / Auth / Token
+      else if (lowerCls.includes("auth") || lowerCls.includes("login") || lowerCls.includes("token") || snippet.includes("jwt") || snippet.includes("password")) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Kimlik Doğrulama, Şifre Güvenliği ve Token Kontrol Testi`,
+          type: "Güvenlik Testi (Security/Auth)",
+          priority: "P1 (Kritik)",
+          preconditions: "Yetkilendirme servisi ve test kullanıcı verisi hazır olmalı.",
+          steps: [
+            "Adım 1: Standartlara uymayan zayıf şifre ile kayıt/giriş deneyin, doğrulama hatası aldığınızı teyit edin.",
+            "Adım 2: Hatalı şifre ile ardışık giriş denemeleri yapın ve maksimum limit aşıldığında hesabın geçici kilitlendiğini doğrulayın.",
+            "Adım 3: Süresi dolmuş veya manipüle edilmiş JWT token ile korumalı kaynağa istek atın; 401 Unauthorized dönmesini test edin.",
+            "Adım 4: Geçerli kimlik bilgileriyle başarılı token üretildiğini ve oturumun açıldığını doğrulayın.",
+          ],
+          expectedResult: "Güvenlik politikaları tam olarak uygulanır, geçersiz kimlik doğrulama talepleri engellenir.",
+        });
+      }
+
+      // Genel Tanımlı Sınıflar İçin Akıllı Test
+      else {
+        testCases.push({
+          id: nextId(),
+          targetComponent: cls.name,
+          title: `[${cls.name}] Sınıfı İlk Başlatma, Durum ve Metot Doğrulama Testi`,
+          type: "Birim Testi (Unit)",
+          priority: "P2 (Yüksek)",
+          preconditions: `${cls.name} sınıfı test ortamında oluşturulmalı.`,
+          steps: [
+            `Adım 1: ${cls.name} sınıfından bir örnek (instance) oluşturun.`,
+            `Adım 2: Sınıfın varsayılan alan ve özelliklerinin geçerli başlangıç değerlerinde olduğunu doğrulayın.`,
+            `Adım 3: Temel metotlarını standart parametrelerle çağırıp dönen değerleri kontrol edin.`,
+          ],
+          expectedResult: `${cls.name} sınıfı belleğe hatasız yüklenmeli ve temel fonksiyonlarını yerine getirmelidir.`,
+        });
+      }
+    }
+  }
+
+  // Metotlar / Fonksiyonlar için özel test adımları
+  if (methods.length > 0) {
+    for (const m of methods.slice(0, 5)) {
+      testCases.push({
+        id: nextId(),
+        targetComponent: m.name,
+        title: `[${m.name}] Metodu İş Mantığı ve Girdi Doğrulama Testi`,
+        type: "Birim / Fonksiyonel Test",
+        priority: "P2 (Yüksek)",
+        preconditions: `${m.name} fonksiyonu erişilebilir olmalı.`,
+        steps: [
+          `Adım 1: '${m.signature || m.name}' fonksiyonunu geçerli standart girdilerle çağırın ve beklenen çıktıyı doğrulayın.`,
+          `Adım 2: Sınır değerler (null, boş string, negatif sayı veya taşma değerleri) ile çağırarak hata yönetimini doğrulayın.`,
+          `Adım 3: Fonksiyonun idempotent veya yan etkisiz davranışlarını kontrol edin.`,
+        ],
+        expectedResult: `${m.name} fonksiyonu doğru sonuçları üretmeli ve sınır koşullarında çökmeye yol açmamalıdır.`,
+      });
+    }
+  }
+
+  // Eğer hiçbir şey yakalanamadıysa genel akıllı test adımları
+  if (testCases.length === 0) {
+    testCases.push(
+      {
+        id: nextId(),
+        title: "Pozitif Akış ve Temel İşlevsellik Kabul Testi",
+        type: "Fonksiyonel Test",
+        priority: "P1 (Kritik)",
+        preconditions: "Değiştirilen kod derlenmiş ve test ortamına kurulmuş olmalı.",
+        steps: [
+          "Adım 1: Yeni eklenen/güncellenen işlevi standart parametrelerle tetikleyin.",
+          "Adım 2: Sistemin beklenen yanıtı ürettiğini ve loglarda hata oluşmadığını doğrulayın.",
+        ],
+        expectedResult: "İşlem başarıyla tamamlanmalı ve beklenen çıktı eksiksiz dönmelidir.",
+      },
+      {
+        id: nextId(),
+        title: "Sınır Değer ve Hata Toleransı Testi",
+        type: "Sınır Değer Testi (Boundary)",
+        priority: "P2 (Yüksek)",
+        preconditions: "Sistem aktif olmalı.",
+        steps: [
+          "Adım 1: İşleve beklenmeyen, sınır dışı veya boş veri gönderin.",
+          "Adım 2: Sistemin çökmeden kontrollü hata ürettiğini doğrulayın.",
+        ],
+        expectedResult: "Uygulama çökmeye uğramaz, kullanıcıya anlaşılır hata bildirir.",
+      }
+    );
+  }
+
+  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const overview = `Tespit Edilen Dil/Platform: ${detectedLanguage} • ${diffStats.addedLinesCount} satır eklendi, ${diffStats.removedLinesCount} satır çıkarıldı. İncelenen bileşenler (${
+    classes.length > 0 ? classes.map((c) => c.name).join(", ") : "Genel Fonksiyonlar"
+  }) analiz edildi; bu mantığa özel toplam ${testCases.length} adet detaylı test adımı oluşturuldu.`;
+
+  return {
+    overview,
+    detectedLanguage,
+    totalTestCount: testCases.length,
+    criticalTestCount: criticalCount,
+    testCases,
+  };
+}

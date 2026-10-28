@@ -1,145 +1,145 @@
 # AI Change Analysis System
 
-Bu proje, yapay zeka destekli değişiklik analizi (AI Change Analysis) için geliştirilmiş modern, container tabanlı bir Full-Stack uygulamadır.
+Bu proje, yapay zeka destekli değişiklik analizi ve test senaryoları üretimi (AI Change Analysis & Test Plan Generator) için geliştirilmiş modern, modüler ve container tabanlı bir Full-Stack uygulamadır.
 
 ---
 
 ## 📌 1. Mevcut Sistem Durumu
 
-Sistem şu anda **tamamen çalışır durumdadır** ve 3 ana bileşenden oluşmaktadır:
+Sistem **tamamen çalışır durumdadır** ve 3 ana bileşenden oluşmaktadır:
 
 | Servis | Teknoloji | Durum | Port / URL |
 | :--- | :--- | :---: | :--- |
-| **Frontend** | React 18, Vite 5, TypeScript, MUI | 🟢 Aktif (Up) | [http://localhost:3000](http://localhost:3000) |
-| **Backend** | Express.js, TypeScript, Prisma ORM | 🟢 Aktif (Up) | [http://localhost:4000](http://localhost:4000) (Sağlık: `/health`) |
-| **Veritabanı** | PostgreSQL 16 (Alpine) | 🟢 Aktif (Up) | `localhost:5432` |
+| **Frontend** | React 18, Vite 5, TypeScript, MUI | 🟢 Aktif | [http://localhost:3000](http://localhost:3000) |
+| **Backend** | Node.js, Express, TypeScript, Prisma | 🟢 Aktif | [http://localhost:4000](http://localhost:4000) (Sağlık: `/api/health`) |
+| **Veritabanı** | PostgreSQL 16 (Alpine) + Resilient In-Memory Fallback | 🟢 Aktif | `localhost:5432` |
 
 ---
 
 ## 🚀 2. Sistemi Çalıştırma Rehberi
 
-Proje **Docker Compose** ile tek komutla çalışacak şekilde yapılandırılmıştır.
-
 ### Ön Koşullar
-- **Docker Desktop** (çalışır vaziyette olmalıdır)
-- **Node.js** (lokal geliştirmeler için, v20+)
+- **Docker & Docker Compose** (Konteyner tabanlı çalıştırma için)
+- **Node.js** (Lokal geliştirmeler için, v20+)
 
 ---
 
 ### A. Docker ile Çalıştırma (Önerilen)
 
-Terminalinizi (PowerShell veya CMD) proje ana dizininde açın:
+Terminalinizi proje ana dizininde açın:
 
-```powershell
-cd C:\Users\berkay.kurt\Desktop\Deneme\Test-AI
-```
-
-#### 1. Sistemi Başlatma (İlk Kurulum veya Güncelleme Sonrası)
-Konteynerleri yeniden derleyip arka planda başlatmak için:
 ```powershell
 docker compose up -d --build
 ```
 
-#### 2. Normal Başlatma (Daha önce derlendiyse)
-```powershell
-docker compose up -d
-```
+- Frontend: [http://localhost:3000](http://localhost:3000)
+- Backend API: [http://localhost:4000/api/health](http://localhost:4000/api/health)
+- PostgreSQL: `localhost:5432`
 
-#### 3. Sistemi Durdurma
-Veriler kaybolmadan sadece konteynerleri durdurmak için:
+Durdurmak için:
 ```powershell
 docker compose down
-```
-
-Veritabanı dâhil her şeyi sıfırlayarak durdurmak için:
-```powershell
-docker compose down -v
-```
-
-#### 4. Servis Durumlarını ve Logları Kontrol Etme
-Çalışan konteynerleri listelemek için:
-```powershell
-docker compose ps
-```
-
-Frontend loglarını canlı izlemek için:
-```powershell
-docker logs -f frontend
-```
-
-Backend loglarını canlı izlemek için:
-```powershell
-docker logs -f backend
 ```
 
 ---
 
 ### B. Lokal Olarak (Docker Olmadan) Çalıştırma
 
-Eğer Docker yerine doğrudan kendi bilgisayarınızda geliştirmek isterseniz:
+1. **Backend'i Başlatma:**
+   ```powershell
+   cd backend
+   npm install
+   npx prisma generate
+   npm run dev
+   ```
+   Backend `http://localhost:4000` adresinde açılır.
 
-#### 1. Backend'i Başlatma
-```powershell
-cd backend
-npm install
-npx prisma generate
-npm run dev
-```
-Backend `http://localhost:4000` adresinde açılır.
-
-#### 2. Frontend'i Başlatma (Yeni bir terminalde)
-```powershell
-cd frontend
-npm install
-npm run dev
-```
-Frontend `http://localhost:3000` adresinde açılır.
+2. **Frontend'i Başlatma:**
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   Frontend `http://localhost:3000` adresinde açılır.
 
 ---
 
-## 📁 3. Proje Dizin Yapısı
+## 🎯 3. Başlıca Özellikler
+
+1. **Evrensel Kod & Değişiklik Analizi:**
+   - C#, Unity, TypeScript, JavaScript, Python, Go, Java, Rust ve SQL kod yapılarını otomatik tanır.
+   - Sınıf, fonksiyon, iş mantığı ve sınır değerlerine özel çalıştırılabilir test adımları (P1, P2, P3) üretir.
+2. **Görsel Kod Değişiklik Görüntüleyicisi (Semantic Diff Viewer):**
+   - Eski ve yeni kod arasındaki eklenen (+) ve çıkarılan (-) satırları renkli ve satır numaralı olarak gösterir.
+3. **Kalıcı Test İlerleme Takibi (Checklist):**
+   - Test adımlarındaki tamamlama kutucukları (`completedSteps`) saklanır ve ilerleme yüzdesi anlık hesaplanır.
+4. **Çoklu Dışa Aktarma (Export):**
+   - Test planlarını **Markdown**, **JSON** ve **CSV** (Excel uyumlu) formatlarında tek tıkla kopyalama veya indirme.
+5. **Etkileşimli Arşiv (Geçmiş) Yönetimi:**
+   - Önceden üretilen tüm test planlarını arama, filtreleme, inceleyip çalışma alanına geri yükleme ve silme.
+6. **Yapay Zeka Prompt Şablon Motoru:**
+   - Türkçe tarif edilen senaryolardan (örn. "RPG mana harcama ve büyü mekaniği") otomatik çalışan kod şablonu üretimi.
+7. **Dayanıklı Veritabanı Mimarisi (Resilient Fallback):**
+   - PostgreSQL bağlantısı aktifken kalıcı veritabanına yazar; bağlantı geçici kopsa bile kesintisiz In-Memory deposuna düşerek sistemi canlı tutar.
+
+---
+
+## 📁 4. Proje Dizin Yapısı
 
 ```text
 Test-AI/
-├── docker-compose.yml          # Tüm servislerin Docker orkestrasyonu
+├── docker-compose.yml          # Tüm servislerin Docker orkestrasyonu ve healthcheck
 ├── README.md                   # Proje kullanım dokümantasyonu
+├── .gitignore                  # Git dışlama kuralları
 │
 ├── backend/
 │   ├── Dockerfile              # Backend container imajı
-│   ├── package.json            # Node.js bağımlılıkları ve scriptler
-│   ├── tsconfig.json           # TypeScript derleyici ayarları
-│   ├── .env                    # Ortam değişkenleri (DB URL, Port vb.)
+│   ├── .dockerignore           # Docker build dışlama kuralları
+│   ├── package.json            # Bağımlılıklar (Express, Helmet, Rate-Limit, Prisma)
+│   ├── tsconfig.json           # TypeScript ayarları
+│   ├── .env                    # Ortam değişkenleri
 │   ├── prisma/
-│   │   └── schema.prisma       # Veritabanı veri modeli
+│   │   └── schema.prisma       # PostgreSQL veri şeması
 │   └── src/
-│       └── index.ts            # Express API sunucusu ve endpoint'ler
+│       ├── config/             # Çevre değişkenleri ve yapılandırmalar
+│       ├── types/              # TypeScript veri tipleri
+│       ├── services/           # DB, Kod Ayrıştırıcı, Test Planı, AI Servisleri
+│       ├── controllers/        # Analiz ve Şablon controller'ları
+│       ├── routes/             # REST API uç noktaları
+│       ├── middlewares/        # Rate Limiting, Error Handling
+│       └── index.ts            # Express sunucu bootstrap
 │
 └── frontend/
     ├── Dockerfile              # Frontend container imajı
-    ├── index.html              # Web sayfası kök HTML dosyası
+    ├── .dockerignore           # Docker build dışlama kuralları
+    ├── index.html              # Kök HTML
     ├── package.json            # React & Vite bağımlılıkları
-    ├── vite.config.ts          # Vite geliştirme sunucusu yapılandırması
+    ├── vite.config.ts          # Vite yapılandırması
     ├── tsconfig.json           # Frontend TypeScript ayarları
     └── src/
-        ├── main.tsx            # React başlangıç noktası
-        ├── App.tsx             # Ana Dashboard arayüzü (MUI)
-        └── index.css           # Global stil tanımlamaları
+        ├── types/              # Arayüz veri tipleri
+        ├── services/           # API istemcisi (fetch wrapper)
+        ├── components/         # Modüler UI bileşenleri:
+        │   ├── Header.tsx
+        │   ├── CodeInputSection.tsx
+        │   ├── DiffViewer.tsx
+        │   ├── TemplateSelector.tsx
+        │   ├── TestPlanView.tsx
+        │   ├── HistoryArchive.tsx
+        │   └── AddTemplateModal.tsx
+        ├── App.tsx             # Ana uygulama kabuğu
+        └── main.tsx            # React başlangıç noktası
 ```
 
 ---
 
-## 🛠️ 4. Sık Karşılaşılan Sorunlar ve Çözümleri
+## 🌐 5. API Uç Noktaları
 
-1. **`localhost bağlanmayı reddetti` veya `ERR_CONNECTION_REFUSED`:**
-   - Docker Desktop uygulamasının açık ve çalışır olduğunu kontrol edin.
-   - `docker compose ps` komutunu çalıştırarak konteynerlerin `Up` olup olmadığını kontrol edin.
-
-2. **`ERR_EMPTY_RESPONSE`:**
-   - Genellikle port yönlendirmesi uyuşmazlığından kaynaklanır. `docker-compose.yml` içinde frontend portunun `3000:3000` olduğundan emin olun.
-
-3. **Konteyneri Sıfırdan Temizleyip Yeniden Kurma:**
-   ```powershell
-   docker compose down -v
-   docker compose build --no-cache
-   docker compose up -d
-   ```
+| Metot | Uç Nokta | Açıklama |
+| :--- | :--- | :--- |
+| `GET` | `/health` veya `/api/health` | Sunucu ve veritabanı durum kontrolü |
+| `POST` | `/api/analyze` | Kod değişikliği analizi ve test planı üretimi |
+| `GET` | `/api/analyses` | Arşivdeki tüm test planlarını listeleme |
+| `GET` | `/api/analyses/:id` | Tekil test planı detayı |
+| `DELETE` | `/api/analyses/:id` | Arşivden test planını silme |
+| `POST` | `/api/generate-template` | Prompt ile AI destekli kod şablonu oluşturma |

@@ -1,145 +1,54 @@
 # AI Change Analysis System
 
-Bu proje, yapay zeka destekli değişiklik analizi ve test senaryoları üretimi (AI Change Analysis & Test Plan Generator) için geliştirilmiş modern, modüler ve container tabanlı bir Full-Stack uygulamadır.
+Yapay zeka ve kural tabanlı anlamsal analiz motorlarını bir araya getiren **AI Change Analysis System**, yazılım projelerinde gerçekleştirilen kod değişikliklerini, mimari güncellemeleri ve yeni eklenen özellikleri analiz ederek otomatik, adım adım çalıştırılabilir test senaryoları ve etki analiz raporları üreten kapsamlı bir kalite güvence (QA) platformudur.
 
 ---
 
-## 📌 1. Mevcut Sistem Durumu
+## 📌 Proje Amacı ve Kapsamı
 
-Sistem **tamamen çalışır durumdadır** ve 3 ana bileşenden oluşmaktadır:
+Yazılım geliştirme döngüsünde (SDLC) kod tabanına eklenen yeni özellikler veya yapılan refactor işlemleri; öngörülemeyen yan etkilere, regresyon hatalarına ve entegrasyon problemlerine yol açabilir. 
 
-| Servis | Teknoloji | Durum | Port / URL |
-| :--- | :--- | :---: | :--- |
-| **Frontend** | React 18, Vite 5, TypeScript, MUI | 🟢 Aktif | [http://localhost:3000](http://localhost:3000) |
-| **Backend** | Node.js, Express, TypeScript, Prisma | 🟢 Aktif | [http://localhost:4000](http://localhost:4000) (Sağlık: `/api/health`) |
-| **Veritabanı** | PostgreSQL 16 (Alpine) + Resilient In-Memory Fallback | 🟢 Aktif | `localhost:5432` |
-
----
-
-## 🚀 2. Sistemi Çalıştırma Rehberi
-
-### Ön Koşullar
-- **Docker & Docker Compose** (Konteyner tabanlı çalıştırma için)
-- **Node.js** (Lokal geliştirmeler için, v20+)
+Bu proje;
+- Değişikliklerin etki alanını ve risk seviyesini otomatik olarak hesaplamak,
+- Geliştiriciler ve test mühendisleri için doğrulanabilir, ön koşulları ve beklenen sonuçları tanımlanmış test adımları hazırlamak,
+- Kod inceleme (Code Review) ve kalite güvence süreçlerindeki manuel test eforunu minimuma indirmek amacıyla tasarlanmıştır.
 
 ---
 
-### A. Docker ile Çalıştırma (Önerilen)
+## 🌟 Temel Fonksiyonel Yetenekler
 
-Terminalinizi proje ana dizininde açın:
+- **Çok Dilli ve Evrensel Kod Analizi:**  
+  C# (Unity / .NET), TypeScript, JavaScript, Python, Go, Java, Rust ve SQL gibi modern programlama dillerindeki sınıf, fonksiyon, metod ve veri modellerini anlamsal olarak ayrıştırır.
 
-```powershell
-docker compose up -d --build
-```
+- **Risk ve Etki Skoru Değerlendirmesi:**  
+  Kod değişikliklerinin büyüklüğüne ve kritiklik derecesine göre risk seviyesini (Düşük, Orta, Yüksek, Kritik) ve etki alanlarını belirler.
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend API: [http://localhost:4000/api/health](http://localhost:4000/api/health)
-- PostgreSQL: `localhost:5432`
+- **Adım Adım Çalıştırılabilir Test Planı Üretimi:**  
+  Her bir işlevsel bileşen için ön koşul, adım adım test talimatı, öncelik derecesi (P1, P2, P3) ve doğrulanabilir beklenen sonuç üretir.
 
-Durdurmak için:
-```powershell
-docker compose down
-```
+- **Görsel Değişiklik İnceleme (Semantic Diff):**  
+  Mevcut kod ile yeni durum arasındaki satır bazlı eklemeleri, silinmeleri ve değişiklikleri renkli ve etkileşimli bir arayüz üzerinde sunar.
 
----
+- **Etkileşimli Test Takibi ve Dışa Aktarma:**  
+  Oluşturulan test adımlarının tamamlanma durumunu interaktif kontrol listeleri üzerinden takip etme; sonuçları Markdown, JSON ve CSV formatlarında dışa aktarma imkânı sunar.
 
-### B. Lokal Olarak (Docker Olmadan) Çalıştırma
+- **Gelişmiş Veri ve Oturum Güvenliği:**  
+  Yazım sırasında otomatik yerel taslak kaydetme, `Ctrl + S` kısayolu, olası kesinti ve tarayıcı kapanmalarına karşı oturum kurtarma desteği içerir.
 
-1. **Backend'i Başlatma:**
-   ```powershell
-   cd backend
-   npm install
-   npx prisma generate
-   npm run dev
-   ```
-   Backend `http://localhost:4000` adresinde açılır.
-
-2. **Frontend'i Başlatma:**
-   ```powershell
-   cd frontend
-   npm install
-   npm run dev
-   ```
-   Frontend `http://localhost:3000` adresinde açılır.
+- **Senaryo ve Şablon Motoru:**  
+  Farklı platformlar ve senaryolar için hazır test şablonları sunarken, kullanıcıların özel şablonlar tanımlamasına ve arşivlemesine olanak tanır.
 
 ---
 
-## 🎯 3. Başlıca Özellikler
+## 🏗️ Mimari ve Teknolojik Altyapı
 
-1. **Evrensel Kod & Değişiklik Analizi:**
-   - C#, Unity, TypeScript, JavaScript, Python, Go, Java, Rust ve SQL kod yapılarını otomatik tanır.
-   - Sınıf, fonksiyon, iş mantığı ve sınır değerlerine özel çalıştırılabilir test adımları (P1, P2, P3) üretir.
-2. **Görsel Kod Değişiklik Görüntüleyicisi (Semantic Diff Viewer):**
-   - Eski ve yeni kod arasındaki eklenen (+) ve çıkarılan (-) satırları renkli ve satır numaralı olarak gösterir.
-3. **Kalıcı Test İlerleme Takibi (Checklist):**
-   - Test adımlarındaki tamamlama kutucukları (`completedSteps`) saklanır ve ilerleme yüzdesi anlık hesaplanır.
-4. **Çoklu Dışa Aktarma (Export):**
-   - Test planlarını **Markdown**, **JSON** ve **CSV** (Excel uyumlu) formatlarında tek tıkla kopyalama veya indirme.
-5. **Etkileşimli Arşiv (Geçmiş) Yönetimi:**
-   - Önceden üretilen tüm test planlarını arama, filtreleme, inceleyip çalışma alanına geri yükleme ve silme.
-6. **Yapay Zeka Prompt Şablon Motoru:**
-   - Türkçe tarif edilen senaryolardan (örn. "RPG mana harcama ve büyü mekaniği") otomatik çalışan kod şablonu üretimi.
-7. **Dayanıklı Veritabanı Mimarisi (Resilient Fallback):**
-   - PostgreSQL bağlantısı aktifken kalıcı veritabanına yazar; bağlantı geçici kopsa bile kesintisiz In-Memory deposuna düşerek sistemi canlı tutar.
+Proje, modern yazılım mimarisi prensiplerine uygun olarak bağımsız katmanlar halinde yapılandırılmıştır:
 
----
+- **Kullanıcı Arayüzü (Frontend):**  
+  Bileşen tabanlı, modern ve reaktif bir kullanıcı deneyimi sunan React mimarisi, güçlü tip güvenliği sağlayan TypeScript altyapısı ve Material Design tasarım sistemi.
 
-## 📁 4. Proje Dizin Yapısı
+- **Uygulama ve Analiz Sunucusu (Backend):**  
+  Modüler katmanlı mimariye (Controller, Service, Route, Middleware) sahip, yüksek performanslı ve genişletilebilir Node.js & Express REST API omurgası.
 
-```text
-Test-AI/
-├── docker-compose.yml          # Tüm servislerin Docker orkestrasyonu ve healthcheck
-├── README.md                   # Proje kullanım dokümantasyonu
-├── .gitignore                  # Git dışlama kuralları
-│
-├── backend/
-│   ├── Dockerfile              # Backend container imajı
-│   ├── .dockerignore           # Docker build dışlama kuralları
-│   ├── package.json            # Bağımlılıklar (Express, Helmet, Rate-Limit, Prisma)
-│   ├── tsconfig.json           # TypeScript ayarları
-│   ├── .env                    # Ortam değişkenleri
-│   ├── prisma/
-│   │   └── schema.prisma       # PostgreSQL veri şeması
-│   └── src/
-│       ├── config/             # Çevre değişkenleri ve yapılandırmalar
-│       ├── types/              # TypeScript veri tipleri
-│       ├── services/           # DB, Kod Ayrıştırıcı, Test Planı, AI Servisleri
-│       ├── controllers/        # Analiz ve Şablon controller'ları
-│       ├── routes/             # REST API uç noktaları
-│       ├── middlewares/        # Rate Limiting, Error Handling
-│       └── index.ts            # Express sunucu bootstrap
-│
-└── frontend/
-    ├── Dockerfile              # Frontend container imajı
-    ├── .dockerignore           # Docker build dışlama kuralları
-    ├── index.html              # Kök HTML
-    ├── package.json            # React & Vite bağımlılıkları
-    ├── vite.config.ts          # Vite yapılandırması
-    ├── tsconfig.json           # Frontend TypeScript ayarları
-    └── src/
-        ├── types/              # Arayüz veri tipleri
-        ├── services/           # API istemcisi (fetch wrapper)
-        ├── components/         # Modüler UI bileşenleri:
-        │   ├── Header.tsx
-        │   ├── CodeInputSection.tsx
-        │   ├── DiffViewer.tsx
-        │   ├── TemplateSelector.tsx
-        │   ├── TestPlanView.tsx
-        │   ├── HistoryArchive.tsx
-        │   └── AddTemplateModal.tsx
-        ├── App.tsx             # Ana uygulama kabuğu
-        └── main.tsx            # React başlangıç noktası
-```
-
----
-
-## 🌐 5. API Uç Noktaları
-
-| Metot | Uç Nokta | Açıklama |
-| :--- | :--- | :--- |
-| `GET` | `/health` veya `/api/health` | Sunucu ve veritabanı durum kontrolü |
-| `POST` | `/api/analyze` | Kod değişikliği analizi ve test planı üretimi |
-| `GET` | `/api/analyses` | Arşivdeki tüm test planlarını listeleme |
-| `GET` | `/api/analyses/:id` | Tekil test planı detayı |
-| `DELETE` | `/api/analyses/:id` | Arşivden test planını silme |
-| `POST` | `/api/generate-template` | Prompt ile AI destekli kod şablonu oluşturma |
+- **Veri ve Kalıcılık Katmanı:**  
+  İlişkisel veri modellemesi için PostgreSQL ve Prisma ORM entegrasyonu; veri güvenliğini ve kesintisizliği garanti altına alan esnek veri yönetim mekanizması.

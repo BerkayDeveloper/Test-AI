@@ -38,6 +38,9 @@ Bu proje;
 - **Senaryo ve Şablon Motoru:**  
   Farklı platformlar ve senaryolar için hazır test şablonları sunarken, kullanıcıların özel şablonlar tanımlamasına ve arşivlemesine olanak tanır.
 
+- **Çoklu Girdi Desteği (Prompt, PDF, Word, Kaynak Kod):**  
+  Değişiklik verilerini manuel kod yapıştırmanın ötesinde; doğal dilde prompt / senaryo metni olarak girebilme, PDF (.pdf), Word (.docx), metin (.txt, .md) veya doğrudan kod dosyalarını sürükle-bırak ile yükleyip otomatik ayrıştırarak test planı üretebilme. Tekil dosya veya eski-yeni versiyon dosyalarını karşılaştırma imkânı.
+
 ---
 
 ## 🏗️ Mimari ve Teknolojik Altyapı

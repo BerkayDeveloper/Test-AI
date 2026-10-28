@@ -13,7 +13,7 @@ export const analysisController = {
       }
 
       if (!newContent || typeof newContent !== "string" || newContent.trim().length === 0) {
-        return res.status(400).json({ error: "Lütfen 'Yeni Durum (Değiştirilen/Eklenen Kod)' alanını doldurun." });
+        return res.status(400).json({ error: "Lütfen değişiklik içeriğini (kod, prompt veya yüklenen doküman metni) girin." });
       }
 
       const safeOldText = typeof previousContent === "string" ? previousContent : "";
@@ -139,6 +139,53 @@ export const analysisController = {
       return res.json({ message: "Analiz kaydı başarıyla silindi.", id });
     } catch (error: any) {
       return res.status(500).json({ error: "Analiz silinemedi: " + error.message });
+    }
+  },
+
+  // PUT /api/analyses/:id
+  async updateAnalysis(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { title, category, diffSummary, testCases } = req.body;
+
+      const updateData: any = {};
+      if (typeof title === "string") updateData.title = title;
+      if (typeof category === "string") updateData.category = category;
+      if (typeof diffSummary === "string") updateData.diffSummary = diffSummary;
+
+      if (Array.isArray(testCases)) {
+        updateData.recommendations = JSON.stringify(testCases);
+        updateData.impactAreas = JSON.stringify(testCases.map((t: any) => t.title || ""));
+        const criticalCount = testCases.filter((t: any) => t.priority?.includes("P1") || t.priority?.includes("P2")).length;
+        updateData.riskLevel = criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM";
+        updateData.riskScore = Math.min(criticalCount * 15 + 25, 95);
+      }
+
+      const updated = await dbService.updateAnalysis(id, updateData);
+      if (!updated) {
+        return res.status(404).json({ error: "Güncellenecek kayıt bulunamadı." });
+      }
+
+      let parsedCases = [];
+      try {
+        parsedCases = JSON.parse(updated.recommendations);
+      } catch {}
+
+      return res.json({
+        id: updated.id,
+        title: updated.title,
+        category: updated.category,
+        diffSummary: updated.diffSummary,
+        riskLevel: updated.riskLevel,
+        riskScore: updated.riskScore,
+        previousContent: updated.previousContent,
+        newContent: updated.newContent,
+        createdAt: updated.createdAt.toISOString(),
+        testCases: parsedCases,
+        totalTestCount: parsedCases.length,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: "Analiz güncellenemedi: " + error.message });
     }
   },
 };

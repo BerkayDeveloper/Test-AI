@@ -9,6 +9,222 @@ export interface GeneratedPlan {
   testCases: TestCase[];
 }
 
+/**
+ * Metnin doğal dil promptu veya doküman metni olup olmadığını tespit eder
+ */
+function isDocumentOrPrompt(text: string): boolean {
+  if (!text || text.trim().length === 0) return false;
+  const codeIndicators = ["class ", "function ", "def ", "public ", "private ", "import ", "using ", "namespace ", "const ", "var ", "let ", "void ", "<w:t", "CREATE TABLE", "SELECT "];
+  let codeCount = 0;
+  for (const ind of codeIndicators) {
+    if (text.includes(ind)) codeCount++;
+  }
+  // Eğer kod indikatörleri 2'den azsa ve Türkçe/doğal dil kelimeleri içeriyorsa
+  const naturalWords = ["ve ", "ile ", "için ", "olan ", "eklendi ", "kullanıcı ", "test ", "sistem ", "güncellendi ", "olarak ", "şifre ", "hesap ", "durum ", "talep ", "hata ", "kural ", "doğrulama ", "kontrol ", "servis "];
+  let naturalCount = 0;
+  const lower = text.toLowerCase();
+  for (const w of naturalWords) {
+    if (lower.includes(w)) naturalCount++;
+  }
+
+  return naturalCount >= 2 || (codeCount === 0 && text.trim().length > 15);
+}
+
+/**
+ * Prompt veya Dokümandan Akıllı Test Planı Üretir
+ */
+function generatePromptDocumentPlan(
+  title: string,
+  category: string,
+  docText: string,
+  oldText: string
+): GeneratedPlan {
+  const testCases: TestCase[] = [];
+  let counter = 1;
+  const nextId = () => `TC-${String(counter++).padStart(3, "0")}`;
+
+  const lower = (docText + " " + title).toLowerCase();
+  const lines = docText
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 5 && !l.startsWith("//") && !l.startsWith("#"));
+
+  // 1. Temel İş Mantığı ve Kabul Senaryosu (Positive / Acceptance)
+  testCases.push({
+    id: nextId(),
+    targetComponent: title || "Temel Gereksinim Akışı",
+    title: `[${title}] Standart Pozitif Akış ve Fonksiyonel Kabul Testi`,
+    type: "Fonksiyonel Kabul Testi (Happy Path)",
+    priority: "P1 (Kritik)",
+    preconditions: "Sistem ve ilgili servisler çalışır durumda, test kullanıcısı/verisi hazır olmalı.",
+    steps: [
+      `Adım 1: '${title}' kapsamında tanımlanan yeni özelliği standart ve geçerli parametrelerle tetikleyin.`,
+      "Adım 2: Başarılı istek sonrası sistemin beklenen başarı yanıtını (200 OK / Başarılı durum) döndürdüğünü doğrulayın.",
+      "Adım 3: İlgili durumun (veritabanı kaydı, bakiye, kullanıcı durumu vb.) beklenen şekilde güncellendiğini teyit edin.",
+    ],
+    expectedResult: "Tüm geçerli girdilerle işlem hatasız tamamlanmalı, yan etkiler doğru yansıtılmalıdır.",
+  });
+
+  // 2. Kimlik Doğrulama / Yetkilendirme / Güvenlik Kontrolleri
+  if (
+    lower.includes("auth") ||
+    lower.includes("şifre") ||
+    lower.includes("token") ||
+    lower.includes("jwt") ||
+    lower.includes("otp") ||
+    lower.includes("sms") ||
+    lower.includes("2fa") ||
+    lower.includes("güvenlik") ||
+    lower.includes("rol") ||
+    category === "security"
+  ) {
+    testCases.push({
+      id: nextId(),
+      targetComponent: "Güvenlik & Yetkilendirme Katmanı",
+      title: "Geçersiz Kimlik Bilgileri, Token Manipülasyonu ve Yetkisiz Erişim Testi",
+      type: "Güvenlik ve Yetkilendirme Testi (Security)",
+      priority: "P1 (Kritik)",
+      preconditions: "Güvenlik middleware ve doğrulama mekanizması devrede olmalı.",
+      steps: [
+        "Adım 1: Eksik, manipüle edilmiş veya süresi dolmuş token/kod ile korunan kaynağa istek yapın.",
+        "Adım 2: Sistemin isteği reddederek 401 Unauthorized veya 403 Forbidden durumu ürettiğini teyit edin.",
+        "Adım 3: Arka arkaya hatalı denemeler (örneğin 3 kez hatalı OTP/şifre) göndererek koruma mekanizmasının (hesap kilidi, rate-limiting) tetiklendiğini doğrulayın.",
+      ],
+      expectedResult: "Yetkisiz talepler tamamen engellenmeli ve güvenlik kuralları ihlal edilmemelidir.",
+    });
+  }
+
+  // 3. Sınır Değerler, Limitler ve Kısıtlamalar (Boundary & Limit Check)
+  if (
+    lower.includes("limit") ||
+    lower.includes("sınır") ||
+    lower.includes("süre") ||
+    lower.includes("dakika") ||
+    lower.includes("adet") ||
+    lower.includes("sayı") ||
+    lower.includes("kapasite") ||
+    /\d+/.test(docText)
+  ) {
+    testCases.push({
+      id: nextId(),
+      targetComponent: "İş Kuralı ve Sınır Kontrolü (Boundary)",
+      title: "Sınır Değerler, Maksimum/Minimum Limitler ve Zaman Aşımı Testi",
+      type: "Sınır Değer Testi (Boundary Limits)",
+      priority: "P2 (Yüksek)",
+      preconditions: "Limit değerleri (tutar, adet, süre, deneme hakkı) tanımlanmış olmalı.",
+      steps: [
+        "Adım 1: Belirtilen limitin tam sınırındaki değerle (örn: max limit veya son geçerli dakika) işlemi deneyin ve kabul edildiğini teyit edin.",
+        "Adım 2: Sınırın 1 birim üzerindeki aşım değeriyle (örn: limit + 1 veya süresi 1 saniye geçmiş) işlemi deneyin ve reddedildiğini doğrulayın.",
+        "Adım 3: Negatif veya sıfır değerler girildiğinde sistemin çökmeden doğrulama hatası verdiğini test edin.",
+      ],
+      expectedResult: "Sınır değerler tam hassasiyetle kontrol edilmeli, aşım durumlarında işlem engellenmelidir.",
+    });
+  }
+
+  // 4. Oyun veya Durum Değişikliği Mekaniği
+  if (
+    lower.includes("oyun") ||
+    lower.includes("can") ||
+    lower.includes("hasar") ||
+    lower.includes("envanter") ||
+    lower.includes("büyü") ||
+    lower.includes("mana") ||
+    category === "game"
+  ) {
+    testCases.push({
+      id: nextId(),
+      targetComponent: "Oyun Mekaniği ve Durum Yönetimi",
+      title: "Karakter/Oyun İçi Durum Güncellemeleri ve Kural Doğrulaması",
+      type: "Oynanış Mantığı Testi (Gameplay/Logic)",
+      priority: "P1 (Kritik)",
+      preconditions: "Oyun sahnesi ve ilgili bileşenler başlatılmış olmalı.",
+      steps: [
+        "Adım 1: İlgili mekanizmayı (can değişimi, eşya alma, yetenek kullanımı) tetikleyin ve değer değişimini gözlemleyin.",
+        "Adım 2: Yetersiz kaynak (örn: yetersiz mana, dolu envanter, ölü karakter) durumunda aksiyonun engellendiğini doğrulayın.",
+        "Adım 3: Değerlerin min/max sınırlarını (0 altı veya tavan üstü) aşamadığını teyit edin.",
+      ],
+      expectedResult: "Oyun içi kaynaklar ve durumlar kurallara uygun güncellenmeli, tutarsızlık yaşanmamalıdır.",
+    });
+  }
+
+  // 5. Sepet, Ödeme ve Finansal İşlemler
+  if (
+    lower.includes("ödeme") ||
+    lower.includes("sepet") ||
+    lower.includes("fiyat") ||
+    lower.includes("tutar") ||
+    lower.includes("kupon") ||
+    lower.includes("bakiye") ||
+    lower.includes("kart")
+  ) {
+    testCases.push({
+      id: nextId(),
+      targetComponent: "Finans & Ödeme İşlemleri",
+      title: "Fiyat Hesaplama, İndirim Uygulaması ve Mükerrer Ödeme Engeli Testi",
+      type: "İş Mantığı & Bütünlük Testi",
+      priority: "P1 (Kritik)",
+      preconditions: "Ödeme altyapısı ve test sepeti hazır olmalı.",
+      steps: [
+        "Adım 1: Sepet kalemlerini ve toplam tutarı hesaplatarak matematiksel doğruluğu kontrol edin.",
+        "Adım 2: Aynı sipariş veya ödeme için çift tıklama veya eşzamanlı istek göndererek idempotency (mükerrer ödeme engeli) mekanizmasını test edin.",
+        "Adım 3: İptal veya başarısız ödeme durumunda bakiye veya stok iadesinin eksiksiz yapıldığını doğrulayın.",
+      ],
+      expectedResult: "Finansal işlemler atomik olarak işlenmeli, çifte harcama ve hesaplama hatası önlenmelidir.",
+    });
+  }
+
+  // 6. Belgedeki/Prompttaki Maddeleri Ayrıştırıp Özel Test Vakaları Oluştur
+  const bulletLines = lines.filter((l) => /^(\d+\.|\*|-|•|adım|madde)/i.test(l));
+  if (bulletLines.length > 0) {
+    for (const bLine of bulletLines.slice(0, 4)) {
+      const cleanLine = bLine.replace(/^(\d+\.|\*|-|•|adım\s*\d*:?|madde\s*\d*:?)\s*/i, "").trim();
+      if (cleanLine.length > 8) {
+        testCases.push({
+          id: nextId(),
+          targetComponent: "Belirtilen Gereksinim Maddesi",
+          title: `Gereksinim Doğrulaması: "${cleanLine.slice(0, 50)}${cleanLine.length > 50 ? "..." : ""}"`,
+          type: "Gereksinim Uygunluk Testi (Specification)",
+          priority: "P2 (Yüksek)",
+          preconditions: "Dokümanda belirtilen ön koşullar ve bileşenler devrede olmalı.",
+          steps: [
+            `Adım 1: Belirtilen '${cleanLine}' kuralı için girdi hazırlayın ve işlemi başlatın.`,
+            "Adım 2: Çıktının dokümanda tanımlanan şartları eksiksiz karşıladığını doğrulayın.",
+            "Adım 3: Kural ihlali durumunda uygun geri bildirim mesajının gösterildiğini kontrol edin.",
+          ],
+          expectedResult: `Belirtilen kural (${cleanLine.slice(0, 40)}...) sistem tarafından tavizsiz uygulanmalıdır.`,
+        });
+      }
+    }
+  }
+
+  // 7. Negatif Girdi ve Hata Toleransı Testi
+  testCases.push({
+    id: nextId(),
+    targetComponent: "Hata Toleransı ve İstisna Yönetimi",
+    title: "Eksik/Hatalı Girdiler, Boş Parametreler ve Sistem Dayanıklılık Testi",
+    type: "Negatif ve İstisna Testi (Negative Flow)",
+    priority: "P2 (Yüksek)",
+    preconditions: "Sistem aktif çalışıyor olmalı.",
+    steps: [
+      "Adım 1: Zorunlu alanları boş bırakarak veya null/boşluk karakteri göndererek isteği tetikleyin.",
+      "Adım 2: Sistemin 500 çökme hatası yerine 400 Bad Request veya anlamlı bir hata mesajı döndürdüğünü doğrulayın.",
+      "Adım 3: Beklenmeyen tipte (sayı yerine metin, çok uzun karakter dizisi vb.) veri girildiğinde sistemin bütünlüğünü koruduğunu teyit edin.",
+    ],
+    expectedResult: "Sistem beklenmeyen girdiler karşısında kararlı kalmalı ve kullanıcıyı yönlendirici hata mesajı vermelidir.",
+  });
+
+  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const overview = `Tespit Edilen Biçim: Prompt / Doküman Metni (${docText.length} karakter, ${lines.length} satır/paragraf). Başlık: "${title}". Dokümanda yer alan kurallar, güvenlik şartları, limitler ve iş mantığı analiz edildi; toplam ${testCases.length} adet çalıştırılabilir Test Senaryosu üretildi.`;
+
+  return {
+    overview,
+    detectedLanguage: "Prompt / Şartname Dokümanı (Doğal Dil)",
+    totalTestCount: testCases.length,
+    criticalTestCount: criticalCount,
+    testCases,
+  };
+}
+
 export function generateUniversalTestPlan(
   title: string,
   category: string,
@@ -16,6 +232,13 @@ export function generateUniversalTestPlan(
   newText: string
 ): GeneratedPlan {
   const codeToAnalyze = newText && newText.trim().length > 0 ? newText : oldText;
+
+  // Prompt veya Doküman Metni mi kontrol et
+  if (isDocumentOrPrompt(codeToAnalyze)) {
+    return generatePromptDocumentPlan(title, category, codeToAnalyze, oldText);
+  }
+
+  // Standart Kod Analizi
   const { language: detectedLanguage } = detectLanguage(codeToAnalyze);
   const entities = parseCodeEntities(codeToAnalyze);
   const diffStats = computeDiffStats(oldText, newText);

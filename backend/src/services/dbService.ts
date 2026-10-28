@@ -113,6 +113,40 @@ export const dbService = {
     return inMemoryAnalyses.delete(id);
   },
 
+  async updateAnalysis(
+    id: string,
+    data: Partial<Omit<AnalysisRecord, "id" | "createdAt">>
+  ): Promise<AnalysisRecord | null> {
+    if (isPrismaAvailable) {
+      try {
+        const updated = await prisma.analysis.update({
+          where: { id },
+          data: {
+            title: data.title,
+            category: data.category,
+            diffSummary: data.diffSummary,
+            riskLevel: data.riskLevel,
+            riskScore: data.riskScore,
+            impactAreas: data.impactAreas,
+            recommendations: data.recommendations,
+          },
+        });
+        return updated;
+      } catch (err: any) {
+        console.warn("Prisma güncelleme hatası, in-memory güncelleniyor:", err.message);
+      }
+    }
+
+    const existing = inMemoryAnalyses.get(id);
+    if (!existing) return null;
+    const updatedRecord: AnalysisRecord = {
+      ...existing,
+      ...data,
+    };
+    inMemoryAnalyses.set(id, updatedRecord);
+    return updatedRecord;
+  },
+
   async isHealthy(): Promise<boolean> {
     if (!isPrismaAvailable) return false;
     try {

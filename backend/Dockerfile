@@ -8,16 +8,16 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+# Copy prisma schema & generate client
+COPY prisma ./prisma
+RUN npx prisma generate
+
 # Copy source code and configuration
 COPY src ./src
 COPY tsconfig.json ./
-COPY prisma ./prisma
 
-# Generate Prisma client
-RUN npx prisma generate
-
-# Build the app
+# Initial build
 RUN npm run build
 
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run dev"]

@@ -17,6 +17,9 @@ import { CodeInputSection } from "./components/CodeInputSection";
 import { TestPlanView } from "./components/TestPlanView";
 import { HistoryArchive } from "./components/HistoryArchive";
 import { AddTemplateModal } from "./components/AddTemplateModal";
+import { TestDetailView } from "./components/TestDetailView";
+import { TestEditView } from "./components/TestEditView";
+import { TestExecutionView } from "./components/TestExecutionView";
 import { TemplateItem, TestPlanResult, AnalysisHistoryItem } from "./types";
 import { api } from "./services/api";
 import { useAutoSaveDraft } from "./hooks/useAutoSaveDraft";
@@ -147,7 +150,11 @@ export async function verifyTotpToken(userId: string, code: string) {
 export default function App() {
   const [tabIndex, setTabIndex] = useState(0);
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
-  const [dbStatus, setDbStatus] = useState<string>("in-memory-fallback");
+  const [dbStatus, setDbStatus] = useState<string | undefined>(undefined);
+
+  // Sayfa / Görünüm Durumu: "main" (Ana ekran sekmeleri) | "inspect" (İncele) | "edit" (Düzenle) | "execute" (Test Et)
+  const [currentView, setCurrentView] = useState<"main" | "inspect" | "edit" | "execute">("main");
+  const [activePlan, setActivePlan] = useState<TestPlanResult | null>(null);
 
   // Kullanıcı özel şablonları
   const [customTemplates, setCustomTemplates] = useState<TemplateItem[]>(() => {
@@ -222,7 +229,7 @@ export default function App() {
   const [openModal, setOpenModal] = useState(false);
   const [snackbarMsg, setSnackbarMsg] = useState<string | null>(null);
 
-  // Arşiv Geçmişi
+  // Üretilen Test Planları Listesi
   const [history, setHistory] = useState<AnalysisHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -231,8 +238,10 @@ export default function App() {
       const data = await api.checkHealth();
       setBackendStatus("connected");
       if (data.database) setDbStatus(data.database);
+      return true;
     } catch {
-      setBackendStatus("disconnected");
+      setBackendStatus((prev) => (prev === "connected" ? "disconnected" : "checking"));
+      return false;
     }
   };
 
@@ -249,8 +258,30 @@ export default function App() {
   };
 
   useEffect(() => {
-    checkHealth();
-    loadHistory();
+    let wasConnected = false;
+
+    const poll = async () => {
+      try {
+        const data = await api.checkHealth();
+        setBackendStatus("connected");
+        if (data.database) setDbStatus(data.database);
+
+        // Bağlantı kurulduğu anda sayfayı yenilemeye gerek kalmadan verileri otomatik çek
+        if (!wasConnected) {
+          wasConnected = true;
+          loadHistory();
+        }
+      } catch {
+        wasConnected = false;
+        setBackendStatus((prev) => (prev === "connected" ? "disconnected" : "checking"));
+      }
+    };
+
+    poll();
+    // 1.5 saniyede bir otomatik polling: Docker ayağa kalktığı anda F5 beklemeden doğrudan bağlanır
+    const interval = setInterval(poll, 1500);
+
+    return () => clearInterval(interval);
   }, []);
 
   const handleSelectTemplate = (tpl: TemplateItem) => {
@@ -284,7 +315,7 @@ export default function App() {
 
   const handleGenerateTests = async () => {
     if (!title.trim() || !newContent.trim()) {
-      setErrorMsg('Lütfen başlık ve "2. Yeni Durum (Değiştirilen/Eklenen Kod)" alanını doldurun.');
+      setErrorMsg("Lütfen değişiklik başlığını ve değişiklik içeriğini (kod, prompt veya yüklenen doküman verisi) doldurun.");
       return;
     }
 
@@ -301,10 +332,10 @@ export default function App() {
       setTestPlan(result);
       loadHistory();
 
-      // İşlem tamamlandığında kaydedilen taslak değerlerini sil:
+      // Taslağı temizle
       clearDraft();
 
-      setSnackbarMsg("✨ Test adımları başarıyla oluşturuldu. Kaydedilen taslak temizlendi.");
+      setSnackbarMsg("✨ Test adımları başarıyla oluşturuldu.");
     } catch (err: any) {
       setErrorMsg(err.message || "Test planı oluşturulurken hata meydana geldi.");
     } finally {
@@ -312,25 +343,39 @@ export default function App() {
     }
   };
 
-  const handleLoadFromHistory = (plan: TestPlanResult) => {
-    setTitle(plan.title);
-    setCategory(plan.category);
-    setPreviousContent(plan.previousContent || "");
-    setNewContent(plan.newContent || "");
-    setTestPlan(plan);
-    setTabIndex(0);
-    setSnackbarMsg("Arşivlenen test planı çalışma alanına yüklendi.");
+  // 1. İncele Sayfasına Geçiş
+  const handleInspectPlan = (plan: TestPlanResult) => {
+    setActivePlan(plan);
+    setCurrentView("inspect");
+  };
+
+  // 2. Düzenle Sayfasına Geçiş
+  const handleEditPlan = (plan: TestPlanResult) => {
+    setActivePlan(plan);
+    setCurrentView("edit");
+  };
+
+  // 3. Test Etmeye Başla Sayfasına Geçiş
+  const handleExecutePlan = (plan: TestPlanResult) => {
+    setActivePlan(plan);
+    setCurrentView("execute");
+  };
+
+  // Sayfalardan "Üretilen Test Planları" listesine geri dönme
+  const handleBackToHistory = () => {
+    setCurrentView("main");
+    setTabIndex(1);
+    loadHistory();
   };
 
   const handleDeleteFromHistory = async (id: string) => {
-    if (!confirm("Bu test planını arşivden silmek istediğinize emin misiniz?")) return;
     try {
       await api.deleteAnalysis(id);
       setHistory((prev) => prev.filter((item) => item.id !== id));
       if (testPlan?.id === id) {
         setTestPlan(null);
       }
-      setSnackbarMsg("Test planı başarıyla silindi.");
+      setSnackbarMsg("🗑️ Test planı başarıyla silindi.");
     } catch (err: any) {
       alert("Hata: " + err.message);
     }
@@ -341,66 +386,118 @@ export default function App() {
       <CssBaseline />
       <Box sx={{ minHeight: "100vh", background: "radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, #090d16 70%)", pb: 10 }}>
         {/* Üst Bar */}
-        <Header backendStatus={backendStatus} dbStatus={dbStatus} />
+        <Header backendStatus={backendStatus} dbStatus={dbStatus} onRetry={checkHealth} />
 
         <Container maxWidth="xl" sx={{ mt: 4 }}>
-          {/* Sekmeler */}
-          <Paper sx={{ mb: 4, background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(255,255,255,0.08)" }}>
-            <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} textColor="primary" indicatorColor="primary">
-              <Tab label="📝 Yeni Değişiklik ve Test Oluşturucu" sx={{ textTransform: "none", fontWeight: 600 }} />
-              <Tab
-                label={`🗂️ Üretilen Test Planları Arşivi (${history.length})`}
-                sx={{ textTransform: "none", fontWeight: 600 }}
-              />
-            </Tabs>
-          </Paper>
-
-          {/* SEKME 0: OLUŞTURMA ALANI */}
-          {tabIndex === 0 && (
-            <Grid container spacing={3}>
-              <Grid item xs={12} lg={testPlan ? 4.5 : 12}>
-                <CodeInputSection
-                  title={title}
-                  setTitle={setTitle}
-                  category={category}
-                  setCategory={setCategory}
-                  previousContent={previousContent}
-                  setPreviousContent={setPreviousContent}
-                  newContent={newContent}
-                  setNewContent={setNewContent}
-                  templates={allTemplates}
-                  defaultTemplatesCount={DEFAULT_TEMPLATES.length}
-                  onSelectTemplate={handleSelectTemplate}
-                  onOpenModal={() => setOpenModal(true)}
-                  onDeleteCustomTemplate={handleDeleteCustomTemplate}
-                  onSubmit={handleGenerateTests}
-                  loading={loading}
-                  errorMsg={errorMsg}
-                  hasResult={!!testPlan}
-                  isOffline={isOffline}
-                  lastSaved={lastSaved}
-                  draftRestored={draftRestored}
-                  onSaveDraft={saveDraft}
-                  onClearDraft={handleClearDraft}
-                />
-              </Grid>
-
-              {testPlan && (
-                <Grid item xs={12} lg={7.5}>
-                  <TestPlanView testPlan={testPlan} />
-                </Grid>
-              )}
-            </Grid>
+          {/* ============================================================== */}
+          {/* SAYFA 1: TEST İNCELE SAYFASI (Yalnızca 'İncele' tıklanınca)      */}
+          {/* ============================================================== */}
+          {currentView === "inspect" && activePlan && (
+            <TestDetailView
+              plan={activePlan}
+              onBack={handleBackToHistory}
+              onGoToEdit={() => setCurrentView("edit")}
+              onGoToExecute={() => setCurrentView("execute")}
+            />
           )}
 
-          {/* SEKME 1: ARŞİV */}
-          {tabIndex === 1 && (
-            <HistoryArchive
-              history={history}
-              onLoadPlan={handleLoadFromHistory}
-              onDeletePlan={handleDeleteFromHistory}
-              loading={historyLoading}
+          {/* ============================================================== */}
+          {/* SAYFA 2: TEST DÜZENLE SAYFASI (Yalnızca 'Düzenle' tıklanınca)    */}
+          {/* ============================================================== */}
+          {currentView === "edit" && activePlan && (
+            <TestEditView
+              plan={activePlan}
+              onBack={handleBackToHistory}
+              onSaveSuccess={(updated) => {
+                setActivePlan(updated);
+                loadHistory();
+                setSnackbarMsg("✓ Test planı başarıyla güncellendi.");
+              }}
+              onGoToExecute={(updated) => {
+                setActivePlan(updated);
+                loadHistory();
+                setCurrentView("execute");
+              }}
             />
+          )}
+
+          {/* ============================================================== */}
+          {/* SAYFA 3: TEST ETME SAYFASI (Yalnızca 'Test Etmeye Başla' tık.)  */}
+          {/* ============================================================== */}
+          {currentView === "execute" && activePlan && (
+            <TestExecutionView
+              plan={activePlan}
+              onBack={handleBackToHistory}
+              onGoToEdit={() => setCurrentView("edit")}
+            />
+          )}
+
+          {/* ============================================================== */}
+          {/* ANA GÖRÜNÜM (Kendiliğinden yalnızca bu sekmeler görünür)       */}
+          {/* ============================================================== */}
+          {currentView === "main" && (
+            <>
+              {/* Sekmeler */}
+              <Paper sx={{ mb: 4, background: "rgba(30, 41, 59, 0.5)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} textColor="primary" indicatorColor="primary">
+                  <Tab label="📝 Yeni Değişiklik ve Test Oluşturucu" sx={{ textTransform: "none", fontWeight: 600 }} />
+                  <Tab
+                    label={`🗂️ Üretilen Test Planları (${history.length})`}
+                    sx={{ textTransform: "none", fontWeight: 600 }}
+                  />
+                </Tabs>
+              </Paper>
+
+              {/* SEKME 0: OLUŞTURMA ALANI */}
+              {tabIndex === 0 && (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} lg={testPlan ? 4.5 : 12}>
+                    <CodeInputSection
+                      title={title}
+                      setTitle={setTitle}
+                      category={category}
+                      setCategory={setCategory}
+                      previousContent={previousContent}
+                      setPreviousContent={setPreviousContent}
+                      newContent={newContent}
+                      setNewContent={setNewContent}
+                      templates={allTemplates}
+                      defaultTemplatesCount={DEFAULT_TEMPLATES.length}
+                      onSelectTemplate={handleSelectTemplate}
+                      onOpenModal={() => setOpenModal(true)}
+                      onDeleteCustomTemplate={handleDeleteCustomTemplate}
+                      onSubmit={handleGenerateTests}
+                      loading={loading}
+                      errorMsg={errorMsg}
+                      hasResult={!!testPlan}
+                      isOffline={isOffline}
+                      lastSaved={lastSaved}
+                      draftRestored={draftRestored}
+                      onSaveDraft={saveDraft}
+                      onClearDraft={handleClearDraft}
+                    />
+                  </Grid>
+
+                  {testPlan && (
+                    <Grid item xs={12} lg={7.5}>
+                      <TestPlanView testPlan={testPlan} />
+                    </Grid>
+                  )}
+                </Grid>
+              )}
+
+              {/* SEKME 1: ÜRETİLEN TEST PLANLARI */}
+              {tabIndex === 1 && (
+                <HistoryArchive
+                  history={history}
+                  onInspectPlan={handleInspectPlan}
+                  onEditPlan={handleEditPlan}
+                  onExecutePlan={handleExecutePlan}
+                  onDeletePlan={handleDeleteFromHistory}
+                  loading={historyLoading}
+                />
+              )}
+            </>
           )}
         </Container>
 

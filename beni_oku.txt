@@ -62,6 +62,8 @@ docker compose down
    ```
    Frontend `http://localhost:3000` adresinde açılır.
 
+Frontend için: cd frontend ardından npm run build
+Backend için: cd backend ardından npm run build
 ---
 
 ## 🎯 3. Başlıca Özellikler
@@ -75,12 +77,16 @@ docker compose down
    - Test adımlarındaki tamamlama kutucukları (`completedSteps`) saklanır ve ilerleme yüzdesi anlık hesaplanır.
 4. **Çoklu Dışa Aktarma (Export):**
    - Test planlarını **Markdown**, **JSON** ve **CSV** (Excel uyumlu) formatlarında tek tıkla kopyalama veya indirme.
-5. **Etkileşimli Arşiv (Geçmiş) Yönetimi:**
+5. **Etkileşimli Test Planları Yönetimi (Geçmiş):**
    - Önceden üretilen tüm test planlarını arama, filtreleme, inceleyip çalışma alanına geri yükleme ve silme.
 6. **Yapay Zeka Prompt Şablon Motoru:**
    - Türkçe tarif edilen senaryolardan (örn. "RPG mana harcama ve büyü mekaniği") otomatik çalışan kod şablonu üretimi.
 7. **Dayanıklı Veritabanı Mimarisi (Resilient Fallback):**
    - PostgreSQL bağlantısı aktifken kalıcı veritabanına yazar; bağlantı geçici kopsa bile kesintisiz In-Memory deposuna düşerek sistemi canlı tutar.
+8. **Çok Formatlı Değişiklik Tanımlama (Prompt, PDF, Word, Kod):**
+   - **Doğrudan Prompt Girişi:** Kod girmeden serbest metin, kullanıcı hikayesi veya iş senaryosu tarif ederek doğrudan test adımları üretebilme veya tek tıkla çalışan kod şablonuna dönüştürebilme.
+   - **Belge & Dosya Yükleme (PDF, Word, Kod):** PDF (.pdf), Word (.docx), Metin (.txt, .md), Kaynak Kod (.cs, .ts, .js, .py, .java, .sql, .diff, .patch) dosyalarını sürükle-bırak yöntemiyle yükleyip metin ayıklayabilme.
+   - **Çift Dosya Karşılaştırma:** Önceki ve yeni versiyon dosyalarını doğrudan yükleyip görsel Diff ve otomatik test planı oluşturabilme.
 
 ---
 
@@ -126,6 +132,9 @@ Test-AI/
         │   ├── TemplateSelector.tsx
         │   ├── TestPlanView.tsx
         │   ├── HistoryArchive.tsx
+        │   ├── TestDetailView.tsx      # Test İncele Sayfası
+        │   ├── TestEditView.tsx        # Test Düzenle Sayfası
+        │   ├── TestExecutionView.tsx   # Test Etme (Koşum) Sayfası
         │   └── AddTemplateModal.tsx
         ├── App.tsx             # Ana uygulama kabuğu
         └── main.tsx            # React başlangıç noktası

@@ -48,6 +48,27 @@ export const api = {
     if (!res.ok) throw new Error("Analiz kaydı silinemedi.");
   },
 
+  async updateAnalysis(
+    id: string,
+    payload: {
+      title?: string;
+      category?: string;
+      diffSummary?: string;
+      testCases?: any[];
+    }
+  ): Promise<TestPlanResult> {
+    const res = await fetch(`${API_BASE_URL}/api/analyses/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || "Analiz güncellenemedi.");
+    }
+    return res.json();
+  },
+
   async generateTemplateWithAI(prompt: string): Promise<{
     name: string;
     category: string;

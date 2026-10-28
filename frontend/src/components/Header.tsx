@@ -1,12 +1,13 @@
 import React from "react";
-import { AppBar, Toolbar, Typography, Chip, Stack } from "@mui/material";
+import { AppBar, Toolbar, Typography, Chip, Stack, CircularProgress } from "@mui/material";
 
 interface HeaderProps {
   backendStatus: "checking" | "connected" | "disconnected";
   dbStatus?: string;
+  onRetry?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ backendStatus, dbStatus }) => {
+export const Header: React.FC<HeaderProps> = ({ backendStatus, dbStatus, onRetry }) => {
   return (
     <AppBar
       position="static"
@@ -36,7 +37,8 @@ export const Header: React.FC<HeaderProps> = ({ backendStatus, dbStatus }) => {
         </Typography>
 
         <Stack direction="row" spacing={1.5} alignItems="center">
-          {dbStatus && (
+          {/* Veritabanı Durumu Rozeti */}
+          {backendStatus === "connected" && dbStatus ? (
             <Chip
               label={dbStatus === "connected" ? "DB: PostgreSQL" : "DB: In-Memory Fallback"}
               size="small"
@@ -47,20 +49,47 @@ export const Header: React.FC<HeaderProps> = ({ backendStatus, dbStatus }) => {
                 fontWeight: 600,
               }}
             />
-          )}
+          ) : backendStatus === "checking" ? (
+            <Chip
+              label="DB: Bağlanıyor..."
+              size="small"
+              variant="outlined"
+              sx={{
+                borderColor: "rgba(255, 255, 255, 0.2)",
+                color: "#94a3b8",
+                fontSize: "0.74rem",
+              }}
+            />
+          ) : null}
 
+          {/* Motor / API Durumu Rozeti */}
           <Chip
+            icon={
+              backendStatus === "checking" ? (
+                <CircularProgress size={12} color="inherit" sx={{ ml: 0.5 }} />
+              ) : undefined
+            }
             label={
               backendStatus === "connected"
                 ? "Motor: Aktif"
                 : backendStatus === "checking"
-                ? "Bağlanıyor..."
-                : "Motor: Bağlantı Yok"
+                ? "Motor Başlatılıyor..."
+                : "Motor: Bağlantı Bekleniyor"
             }
-            color={backendStatus === "connected" ? "success" : backendStatus === "checking" ? "warning" : "error"}
+            color={
+              backendStatus === "connected"
+                ? "success"
+                : backendStatus === "checking"
+                ? "warning"
+                : "error"
+            }
             size="small"
             variant="outlined"
-            sx={{ fontWeight: 700 }}
+            onClick={backendStatus !== "connected" ? onRetry : undefined}
+            sx={{
+              fontWeight: 700,
+              cursor: backendStatus !== "connected" ? "pointer" : "default",
+            }}
           />
         </Stack>
       </Toolbar>

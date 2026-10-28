@@ -10,6 +10,7 @@ const router = Router();
 router.post("/analyze", analyzeLimiter, analysisController.analyzeChange);
 router.get("/analyses", analysisController.getAnalyses);
 router.get("/analyses/:id", analysisController.getAnalysisById);
+router.put("/analyses/:id", analysisController.updateAnalysis);
 router.delete("/analyses/:id", analysisController.deleteAnalysis);
 
 // AI & Şablon Üretici

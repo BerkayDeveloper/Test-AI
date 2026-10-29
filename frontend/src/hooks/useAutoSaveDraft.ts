@@ -32,9 +32,9 @@ export function useAutoSaveDraft(
   const saveToStorage = useCallback(
     (data: DraftData, isManual = false) => {
       const hasContent =
-        Boolean(data.title.trim()) ||
-        Boolean(data.previousContent.trim()) ||
-        Boolean(data.newContent.trim());
+        Boolean(data.title?.trim()) ||
+        Boolean(data.previousContent?.trim()) ||
+        Boolean(data.newContent?.trim());
 
       if (!hasContent) {
         return false;
@@ -47,13 +47,18 @@ export function useAutoSaveDraft(
       });
 
       const payload: DraftData = {
-        ...data,
+        title: data.title || "",
+        category: data.category || "none",
+        previousContent: data.previousContent || "",
+        newContent: data.newContent || "",
         savedAt: timestamp,
       };
 
       try {
         localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
         setLastSaved(timestamp);
+        // Manuel kaydetmede veya otomatik kaydetmede taslağı temizle butonu görünür olsun
+        setDraftRestored(true);
         if (isManual) {
           options?.onManualSave?.(timestamp);
         } else {

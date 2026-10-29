@@ -57,7 +57,7 @@ const darkTheme = createTheme({
 
 const DEFAULT_TEMPLATES: TemplateItem[] = [
   {
-    name: "🔴 API Breaking Change (Metot/Fonksiyon Silinmesi)",
+    name: "🌐 API Breaking Change (Metot/Fonksiyon Silinmesi)",
     category: "api",
     title: "Ödeme ve Bakiye API Sözleşmesi Değişikliği",
     oldCode: `export function processPayment(userId: string, amount: number) {
@@ -115,7 +115,7 @@ public class PauseManager : MonoBehaviour {
 }`,
   },
   {
-    name: "🛡️ Güvenlik & Token Doğrulama Değişikliği",
+    name: "🔒 Güvenlik & Token Doğrulama Değişikliği",
     category: "security",
     title: "JWT Kimlik Doğrulama Katmanı Güncellemesi",
     oldCode: `const sessionSecret = "hardcoded_key_123";
@@ -129,7 +129,7 @@ function verifyToken(token: string) {
 }`,
   },
   {
-    name: "✨ Sıfırdan Yeni Özellik Ekleme (Önceki Kod Boş)",
+    name: "🌐 Sıfırdan Yeni Özellik Ekleme (Önceki Kod Boş)",
     category: "api",
     title: "Yeni İki Adımlı Doğrulama (2FA) Servisi",
     oldCode: "",

@@ -52,7 +52,7 @@ const FileIcon = () => (
 
 const QUICK_PROMPTS = [
   {
-    label: "📱 SMS OTP & 2FA Doğrulama",
+    label: "🔒 SMS OTP & 2FA Doğrulama",
     title: "Kullanıcı Girişi İçin İki Adımlı SMS/OTP Doğrulama Akışı",
     category: "security",
     prompt: `Kullanıcı giriş ve kayıt akışına 2FA SMS doğrulama mekanizması eklendi.
@@ -75,7 +75,7 @@ const QUICK_PROMPTS = [
 6. Karakter öldükten 3 saniye sonra en son ulaşılan Checkpoint pozisyonunda tam canla yeniden doğar (Respawn).`,
   },
   {
-    label: "🛒 Sepet İndirim & Kupon Validasyonu",
+    label: "🌐 Sepet İndirim & Kupon Validasyonu",
     title: "E-Ticaret Sepet Fiyatlandırma, Kupon İndirimi ve Sepet Kuralları",
     category: "api",
     prompt: `Sepet ve ödeme servisine kupon uygulama ve sepet hesaplama mantığı eklendi:
@@ -157,6 +157,8 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   // Dosya Yükleme Modu State
   const [fileParsing, setFileParsing] = useState(false);
   const [parsedFileInfo, setParsedFileInfo] = useState<ParsedDocumentResult | null>(null);
+  const [fileContent, setFileContent] = useState("");
+  const [fileOldContent, setFileOldContent] = useState("");
   const [compareMode, setCompareMode] = useState<"single" | "dual">("single");
   const [parsedOldFileInfo, setParsedOldFileInfo] = useState<ParsedDocumentResult | null>(null);
 
@@ -228,7 +230,8 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
         setTitle(`${cleanName} Değişiklik Analizi`);
       }
 
-      // Yeni durum alanına metni aktar
+      // Dosya içeriği alanına aktar ve senkronize et
+      setFileContent(result.text);
       setNewContent(result.text);
 
       // Kategori tahmini
@@ -253,6 +256,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
     try {
       const result = await parseDocument(file);
       setParsedOldFileInfo(result);
+      setFileOldContent(result.text);
       setPreviousContent(result.text);
     } catch (err: any) {
       alert("Önceki versiyon dosyası okunurken hata oluştu: " + err.message);
@@ -277,6 +281,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
           const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
           setTitle(`${cleanName} Değişiklik Analizi`);
         }
+        setFileContent(result.text);
         setNewContent(result.text);
       } catch (err: any) {
         alert("Dosya okunurken hata: " + err.message);
@@ -338,26 +343,6 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
           </Alert>
         )}
 
-        {/* Kurtarılan Taslak Bildirimi */}
-        {draftRestored && (
-          <Alert
-            severity="info"
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={onClearDraft}
-                sx={{ textTransform: "none", fontWeight: 700 }}
-              >
-                Taslağı Temizle
-              </Button>
-            }
-            sx={{ mb: 2 }}
-          >
-            💾 <b>Kurtarılan Taslak Yüklendi:</b> Önceki oturumda girdiğiniz veriler otomatik geri yüklendi.
-          </Alert>
-        )}
-
         {/* Otomatik Veri Koruma & Ctrl + S Bilgi Çubuğu */}
         <Box
           sx={{
@@ -380,7 +365,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
               <b>Otomatik Veri Koruma</b> — <span style={{ opacity: 0.85 }}>Kaydetmek için <kbd style={{ background: "rgba(0,0,0,0.4)", padding: "2px 6px", borderRadius: 4, border: "1px solid rgba(255,255,255,0.15)", fontSize: "0.74rem" }}>Ctrl + S</kbd></span>
             </span>
           </Stack>
-          <Stack direction="row" alignItems="center" spacing={1}>
+          <Stack direction="row" alignItems="center" spacing={1.5}>
             {lastSaved ? (
               <span style={{ color: "#34d399", fontWeight: 600 }}>
                 ✓ Son kayıt: {lastSaved}
@@ -388,22 +373,29 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
             ) : (
               <span style={{ opacity: 0.7 }}>Hazır</span>
             )}
-            {onSaveDraft && (
-              <Tooltip title="Taslağı şimdi kaydet (Ctrl + S)">
+            {draftRestored && onClearDraft && (
+              <Tooltip title="Kaydedilen verileri sil ve formu temizle">
                 <Button
                   size="small"
-                  variant="text"
-                  onClick={onSaveDraft}
+                  variant="outlined"
+                  color="inherit"
+                  onClick={onClearDraft}
                   sx={{
-                    color: "#38bdf8",
-                    minWidth: "auto",
-                    p: "2px 8px",
-                    fontSize: "0.75rem",
                     textTransform: "none",
+                    fontSize: "0.72rem",
                     fontWeight: 700,
+                    px: 1,
+                    py: 0.2,
+                    minWidth: "auto",
+                    borderColor: "rgba(255, 255, 255, 0.25)",
+                    color: "#f87171",
+                    "&:hover": {
+                      borderColor: "#ef4444",
+                      background: "rgba(239, 68, 68, 0.1)",
+                    },
                   }}
                 >
-                  Kaydet
+                  Kaydedilen Verileri Sil
                 </Button>
               </Tooltip>
             )}
@@ -681,34 +673,71 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                 />
                 <Paper
                   variant="outlined"
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const files = e.dataTransfer.files;
+                    if (files && files.length > 0) {
+                      const file = files[0];
+                      setFileParsing(true);
+                      parseDocument(file)
+                        .then((res) => {
+                          setParsedOldFileInfo(res);
+                          setFileOldContent(res.text);
+                          setPreviousContent(res.text);
+                        })
+                        .catch((err) => alert("Önceki dosya okunurken hata: " + err.message))
+                        .finally(() => setFileParsing(false));
+                    }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={() => oldFileInputRef.current?.click()}
                   sx={{
-                    p: 2,
-                    border: "1px dashed rgba(255, 255, 255, 0.2)",
-                    borderRadius: 2,
+                    p: 3,
+                    border: "2px dashed rgba(56, 189, 248, 0.4)",
+                    borderRadius: 2.5,
                     textAlign: "center",
                     cursor: "pointer",
-                    background: "rgba(0, 0, 0, 0.2)",
+                    background: "rgba(56, 189, 248, 0.04)",
                     transition: "all 0.2s",
-                    "&:hover": { borderColor: "#38bdf8", background: "rgba(56, 189, 248, 0.05)" },
+                    "&:hover": {
+                      borderColor: "#38bdf8",
+                      background: "rgba(56, 189, 248, 0.08)",
+                    },
                   }}
                 >
                   {parsedOldFileInfo ? (
-                    <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5}>
-                      <span style={{ fontSize: "1.2rem" }}>📄</span>
-                      <Box sx={{ textAlign: "left" }}>
-                        <Typography variant="body2" sx={{ fontWeight: 700, color: "#38bdf8" }}>
-                          {parsedOldFileInfo.fileName}
-                        </Typography>
-                        <Typography variant="caption" sx={{ color: "#94a3b8" }}>
-                          {parsedOldFileInfo.fileType} • {parsedOldFileInfo.fileSizeFormatted} • {parsedOldFileInfo.lineCount} satır
-                        </Typography>
-                      </Box>
-                    </Stack>
+                    <Box>
+                      <Stack direction="row" alignItems="center" justifyContent="center" spacing={1.5} sx={{ mb: 1 }}>
+                        <span style={{ fontSize: "1.8rem" }}>📑</span>
+                        <Box sx={{ textAlign: "left" }}>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#38bdf8" }}>
+                            {parsedOldFileInfo.fileName}
+                          </Typography>
+                          <Typography variant="caption" sx={{ color: "#94a3b8" }}>
+                            {parsedOldFileInfo.fileType} • {parsedOldFileInfo.fileSizeFormatted} • {parsedOldFileInfo.lineCount} satır • {parsedOldFileInfo.charCount} karakter
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Typography variant="caption" sx={{ color: "#38bdf8", display: "block" }}>
+                        ✓ Önceki versiyon başarıyla yüklendi! Farklı dosya seçmek için tıklayın veya sürükleyin.
+                      </Typography>
+                    </Box>
                   ) : (
-                    <Typography variant="body2" sx={{ color: "#94a3b8", fontSize: "0.82rem" }}>
-                      Önceki versiyon dosyasını seçmek için tıklayın (PDF, Word veya Kod)
-                    </Typography>
+                    <Box>
+                      <Box sx={{ color: "#38bdf8", mb: 1 }}>
+                        <UploadIcon />
+                      </Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: "#e2e8f0", mb: 0.5 }}>
+                        1. Önceki Durum / Eski Versiyon Dosyasını Yükleyin
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#94a3b8" }}>
+                        Dosya seçmek için tıklayın veya sürükleyip bırakın (PDF, Word, TXT, MD, C#, TS, Py, SQL vb.)
+                      </Typography>
+                    </Box>
                   )}
                 </Paper>
               </Box>
@@ -790,8 +819,11 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
               fullWidth
               multiline
               rows={hasResult ? 5 : 8}
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
+              value={fileContent}
+              onChange={(e) => {
+                setFileContent(e.target.value);
+                setNewContent(e.target.value);
+              }}
               placeholder="Yüklediğiniz PDF veya dosyadan çıkarılan metin burada listelenir..."
               sx={{
                 mb: 2,
@@ -803,8 +835,8 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
               }}
             />
 
-            {compareMode === "dual" && previousContent && (
-              <DiffViewer oldCode={previousContent} newCode={newContent} />
+            {compareMode === "dual" && fileOldContent && (
+              <DiffViewer oldCode={fileOldContent} newCode={fileContent} />
             )}
           </Box>
         )}
@@ -821,8 +853,20 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
           variant="contained"
           fullWidth
           size="large"
-          onClick={inputMode === 1 ? handleSubmitFromPrompt : onSubmit}
-          disabled={loading || (inputMode === 1 ? !promptText.trim() : !newContent.trim())}
+          onClick={() => {
+            if (inputMode === 1) {
+              handleSubmitFromPrompt();
+            } else if (inputMode === 2) {
+              setNewContent(fileContent);
+              if (compareMode === "dual") {
+                setPreviousContent(fileOldContent);
+              }
+              setTimeout(() => onSubmit(), 50);
+            } else {
+              onSubmit();
+            }
+          }}
+          disabled={loading || (inputMode === 1 ? !promptText.trim() : inputMode === 2 ? !fileContent.trim() : !newContent.trim())}
           sx={{
             py: 1.5,
             fontWeight: 700,

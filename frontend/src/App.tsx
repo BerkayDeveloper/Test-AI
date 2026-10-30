@@ -151,6 +151,9 @@ export default function App() {
   const [tabIndex, setTabIndex] = useState(0);
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [dbStatus, setDbStatus] = useState<string | undefined>(undefined);
+  const [activePersona, setActivePersona] = useState<"qa" | "developer">("qa");
+
+  const isQa = activePersona === "qa";
 
   // Sayfa / Görünüm Durumu: "main" (Ana ekran sekmeleri) | "inspect" (İncele) | "edit" (Düzenle) | "execute" (Test Et)
   const [currentView, setCurrentView] = useState<"main" | "inspect" | "edit" | "execute">("main");
@@ -328,6 +331,7 @@ export default function App() {
         category,
         previousContent,
         newContent,
+        persona: activePersona,
       });
       setTestPlan(result);
       loadHistory();
@@ -384,9 +388,24 @@ export default function App() {
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
-      <Box sx={{ minHeight: "100vh", background: "radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, #090d16 70%)", pb: 10 }}>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          background: isQa
+            ? "radial-gradient(ellipse at 50% 0%, #0c2340 0%, #090d16 70%)"
+            : "radial-gradient(ellipse at 50% 0%, #063d2e 0%, #090d16 70%)",
+          transition: "background 0.4s ease",
+          pb: 10,
+        }}
+      >
         {/* Üst Bar */}
-        <Header backendStatus={backendStatus} dbStatus={dbStatus} onRetry={checkHealth} />
+        <Header
+          backendStatus={backendStatus}
+          dbStatus={dbStatus}
+          onRetry={checkHealth}
+          activePersona={activePersona}
+          onPersonaChange={setActivePersona}
+        />
 
         <Container maxWidth="xl" sx={{ mt: 4 }}>
           {/* ============================================================== */}
@@ -475,6 +494,7 @@ export default function App() {
                       draftRestored={draftRestored}
                       onSaveDraft={saveDraft}
                       onClearDraft={handleClearDraft}
+                      activePersona={activePersona}
                     />
                   </Grid>
 

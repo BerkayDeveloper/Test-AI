@@ -6,7 +6,7 @@ export const analysisController = {
   // POST /api/analyze
   async analyzeChange(req: Request, res: Response) {
     try {
-      const { title, category, previousContent, newContent } = req.body;
+      const { title, category, previousContent, newContent, persona } = req.body;
 
       if (!title || typeof title !== "string" || title.trim().length === 0) {
         return res.status(400).json({ error: "Lütfen bir değişiklik veya görev başlığı girin." });
@@ -19,9 +19,10 @@ export const analysisController = {
       const safeOldText = typeof previousContent === "string" ? previousContent : "";
       const safeNewText = newContent;
       const safeCategory = typeof category === "string" && category.trim() ? category : "code";
+      const safePersona = persona === "developer" ? "developer" : "qa";
 
       // Test Adımları Motorunu Çalıştır
-      const testPlan = generateUniversalTestPlan(title, safeCategory, safeOldText, safeNewText);
+      const testPlan = generateUniversalTestPlan(title, safeCategory, safeOldText, safeNewText, safePersona);
 
       // Veritabanına kaydet (previousContent ve newContent TAM OLARAK saklanır)
       const id = `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;

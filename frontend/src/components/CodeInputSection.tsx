@@ -120,6 +120,7 @@ interface CodeInputSectionProps {
   draftRestored?: boolean;
   onSaveDraft?: () => void;
   onClearDraft?: () => void;
+  activePersona?: "qa" | "developer";
 }
 
 export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
@@ -145,7 +146,9 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   draftRestored,
   onSaveDraft,
   onClearDraft,
+  activePersona = "qa",
 }) => {
+  const isQa = activePersona === "qa";
   // Giriş Modu: 0 = Kod Karşılaştırma, 1 = Doğrudan Prompt / Metin, 2 = Belge / Dosya Yükleme (PDF, Word, Kod)
   const [inputMode, setInputMode] = useState<number>(0);
 
@@ -299,12 +302,65 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   return (
     <Card
       sx={{
-        border: "1px solid rgba(255, 255, 255, 0.1)",
+        border: isQa ? "1px solid rgba(6, 182, 212, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
+        boxShadow: isQa
+          ? "0 8px 32px -4px rgba(6, 182, 212, 0.15)"
+          : "0 8px 32px -4px rgba(16, 185, 129, 0.15)",
         backdropFilter: "blur(16px)",
         height: "100%",
+        transition: "all 0.3s ease-in-out",
       }}
     >
       <CardContent>
+        {/* Aktif Mod Rozeti (QA / Developer) */}
+        <Box
+          sx={{
+            mb: 2,
+            p: 1.2,
+            px: 2,
+            borderRadius: 2,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            background: isQa
+              ? "linear-gradient(90deg, rgba(6, 182, 212, 0.12) 0%, rgba(99, 102, 241, 0.08) 100%)"
+              : "linear-gradient(90deg, rgba(16, 185, 129, 0.12) 0%, rgba(59, 130, 246, 0.08) 100%)",
+            border: isQa ? "1px solid rgba(6, 182, 212, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
+          }}
+        >
+          <Stack direction="row" spacing={1.2} alignItems="center">
+            <span style={{ fontSize: "1.25rem" }}>{isQa ? "🧪" : "💻"}</span>
+            <Box>
+              <Typography
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 800,
+                  color: isQa ? "#38bdf8" : "#34d399",
+                  lineHeight: 1.2,
+                }}
+              >
+                {isQa ? "QA / Test Mühendisi Bakış Açısı Aktif" : "Developer / Yazılım Geliştirici Bakış Açısı Aktif"}
+              </Typography>
+              <Typography variant="caption" sx={{ color: "#94a3b8", display: "block" }}>
+                {isQa
+                  ? "Sistem kullanıcı deneyimi, E2E yolculuk, sınır değerler ve negatif senaryoları analiz eder."
+                  : "Sistem kod sözleşmeleri, exception yakalama, unit testler ve refactor risklerini analiz eder."}
+              </Typography>
+            </Box>
+          </Stack>
+          <Chip
+            size="small"
+            label={isQa ? "QA Motoru" : "Dev Motoru"}
+            sx={{
+              fontWeight: 700,
+              fontSize: "0.72rem",
+              background: isQa ? "rgba(6, 182, 212, 0.2)" : "rgba(16, 185, 129, 0.2)",
+              color: isQa ? "#38bdf8" : "#34d399",
+              border: isQa ? "1px solid rgba(6, 182, 212, 0.4)" : "1px solid rgba(16, 185, 129, 0.4)",
+            }}
+          />
+        </Box>
+
         {/* Üst Başlık ve Bilgilendirme */}
         <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 0.5 }}>
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
@@ -870,22 +926,29 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
           sx={{
             py: 1.5,
             fontWeight: 700,
-            background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+            background: isQa
+              ? "linear-gradient(90deg, #06b6d4, #6366f1)"
+              : "linear-gradient(90deg, #10b981, #0ea5e9)",
             textTransform: "none",
             fontSize: "0.95rem",
-            boxShadow: "0 4px 14px 0 rgba(99, 102, 241, 0.39)",
+            boxShadow: isQa
+              ? "0 4px 14px 0 rgba(6, 182, 212, 0.45)"
+              : "0 4px 14px 0 rgba(16, 185, 129, 0.45)",
             "&:hover": {
-              background: "linear-gradient(90deg, #4f46e5, #0891b2)",
+              background: isQa
+                ? "linear-gradient(90deg, #0891b2, #4f46e5)"
+                : "linear-gradient(90deg, #059669, #0284c7)",
             },
+            transition: "all 0.3s ease",
           }}
         >
           {loading ? (
             <Stack direction="row" spacing={1} alignItems="center">
               <CircularProgress size={22} color="inherit" />
-              <span>Test Adımları Oluşturuluyor...</span>
+              <span>{isQa ? "QA Senaryoları & E2E Test Adımları Oluşturuluyor..." : "Developer Unit & Kod Test Adımları Oluşturuluyor..."}</span>
             </Stack>
           ) : (
-            `✨ ${inputMode === 1 ? "Prompt İle Test Adımlarını Oluştur" : inputMode === 2 ? "Yüklenen Belgeyle Test Adımlarını Oluştur" : "Test Adımlarını Oluştur"}`
+            `✨ ${isQa ? "QA Test Adımlarını Oluştur" : "Developer Test Adımlarını Oluştur"}`
           )}
         </Button>
       </CardContent>

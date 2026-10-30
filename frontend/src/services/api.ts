@@ -14,6 +14,7 @@ export const api = {
     category: string;
     previousContent: string;
     newContent: string;
+    persona?: "qa" | "developer";
   }): Promise<TestPlanResult> {
     const res = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: "POST",

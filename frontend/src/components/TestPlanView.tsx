@@ -16,6 +16,7 @@ import {
   LinearProgress,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
+import { cleanTitle } from "../utils/titleCleaner";
 
 interface TestPlanViewProps {
   testPlan: TestPlanResult;
@@ -53,14 +54,20 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
   const completedStepsCount = Object.values(completedSteps).filter(Boolean).length;
   const progressPercent = totalStepsCount > 0 ? Math.round((completedStepsCount / totalStepsCount) * 100) : 0;
 
+  const formatPriority = (priority: string = "") => {
+    const match = priority.match(/\((.*?)\)/);
+    if (match && match[1]) return match[1].trim();
+    return priority.replace(/^P\d+\s*-?\s*/i, "").trim() || priority;
+  };
+
   const copyMarkdown = () => {
     let md = `# Test Planı: ${testPlan.title}\n\n`;
     md += `> ${testPlan.overview}\n\n`;
     md += `Toplam Test: ${testPlan.totalTestCount} | Kritik Test: ${testPlan.criticalTestCount}\n\n`;
 
     testPlan.testCases.forEach((tc) => {
-      md += `### [${tc.id}] ${tc.title}\n`;
-      md += `- **Öncelik:** ${tc.priority} | **Tür:** ${tc.type}\n`;
+      md += `### [${tc.id}] ${cleanTitle(tc.title)}\n`;
+      md += `- **Öncelik:** ${formatPriority(tc.priority)} | **Tür:** ${tc.type}\n`;
       md += `- **Ön Koşul:** ${tc.preconditions}\n`;
       md += `- **Test Adımları:**\n`;
       tc.steps.forEach((s) => {
@@ -75,7 +82,15 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
   };
 
   const copyJson = () => {
-    navigator.clipboard.writeText(JSON.stringify(testPlan, null, 2));
+    const cleanedPlan = {
+      ...testPlan,
+      testCases: testPlan.testCases.map((tc) => ({
+        ...tc,
+        title: cleanTitle(tc.title),
+        priority: formatPriority(tc.priority),
+      })),
+    };
+    navigator.clipboard.writeText(JSON.stringify(cleanedPlan, null, 2));
     setCopiedJson(true);
     setTimeout(() => setCopiedJson(false), 2000);
   };
@@ -84,8 +99,8 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
     const headers = ["ID", "Baslik", "Oncelik", "Tur", "On Kosul", "Adimlar", "Beklenen Sonuc"];
     const rows = testPlan.testCases.map((tc) => [
       `"${tc.id}"`,
-      `"${tc.title.replace(/"/g, '""')}"`,
-      `"${tc.priority}"`,
+      `"${cleanTitle(tc.title).replace(/"/g, '""')}"`,
+      `"${formatPriority(tc.priority)}"`,
       `"${tc.type}"`,
       `"${tc.preconditions.replace(/"/g, '""')}"`,
       `"${tc.steps.join(" | ").replace(/"/g, '""')}"`,
@@ -102,10 +117,11 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
     document.body.removeChild(link);
   };
 
-  const getPriorityColor = (priority: string) => {
-    if (priority.includes("P1")) return "#ef4444";
-    if (priority.includes("P2")) return "#f97316";
-    if (priority.includes("P3")) return "#f59e0b";
+  const getPriorityColor = (priority: string = "") => {
+    const p = priority.toLowerCase();
+    if (p.includes("kritik") || p.includes("p1") || p.includes("blocker")) return "#ef4444";
+    if (p.includes("yüksek") || p.includes("p2") || p.includes("high")) return "#f97316";
+    if (p.includes("orta") || p.includes("normal") || p.includes("p3") || p.includes("medium")) return "#f59e0b";
     return "#10b981";
   };
 
@@ -167,7 +183,7 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
           <Stack direction="row" spacing={1.5} sx={{ mt: 2, mb: 2 }}>
             <Chip label={`Toplam: ${testPlan.totalTestCount} Test`} color="primary" sx={{ fontWeight: 700 }} />
             <Chip
-              label={`${testPlan.criticalTestCount} Adet Kritik / P1-P2`}
+              label={`${testPlan.criticalTestCount} Adet Kritik / Yüksek Öncelikli`}
               color="warning"
               sx={{ fontWeight: 700 }}
             />
@@ -234,12 +250,12 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({ testPlan }) => {
                   sx={{ backgroundColor: "rgba(255,255,255,0.1)", fontWeight: 800, fontFamily: "monospace" }}
                 />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                  {tc.title}
+                  {cleanTitle(tc.title)}
                 </Typography>
               </Stack>
               <Stack direction="row" spacing={1}>
                 <Chip
-                  label={tc.priority}
+                  label={formatPriority(tc.priority)}
                   size="small"
                   sx={{
                     backgroundColor: `${getPriorityColor(tc.priority)}22`,

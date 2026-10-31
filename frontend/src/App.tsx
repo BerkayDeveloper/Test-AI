@@ -316,8 +316,16 @@ export default function App() {
     setSnackbarMsg("Şablon silindi.");
   };
 
-  const handleGenerateTests = async () => {
-    if (!title.trim() || !newContent.trim()) {
+  const handleGenerateTests = async (customOverride?: {
+    customTitle?: string;
+    customNewContent?: string;
+    customPreviousContent?: string;
+  }) => {
+    const finalTitle = (customOverride?.customTitle ?? title).trim();
+    const finalNew = (customOverride?.customNewContent ?? newContent).trim();
+    const finalPrev = customOverride?.customPreviousContent ?? previousContent;
+
+    if (!finalTitle || !finalNew) {
       setErrorMsg("Lütfen değişiklik başlığını ve değişiklik içeriğini (kod, prompt veya yüklenen doküman verisi) doldurun.");
       return;
     }
@@ -327,10 +335,10 @@ export default function App() {
 
     try {
       const result = await api.analyzeChange({
-        title,
+        title: finalTitle,
         category,
-        previousContent,
-        newContent,
+        previousContent: finalPrev,
+        newContent: finalNew,
         persona: activePersona,
       });
       setTestPlan(result);

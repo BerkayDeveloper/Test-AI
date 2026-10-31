@@ -18,6 +18,7 @@ import {
 } from "@mui/material";
 import { TestPlanResult, TestCase } from "../types";
 import { api } from "../services/api";
+import { cleanTitle } from "../utils/titleCleaner";
 
 interface TestEditViewProps {
   plan: TestPlanResult;
@@ -32,11 +33,22 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
   onSaveSuccess,
   onGoToExecute,
 }) => {
+  const formatPriority = (priority: string = "") => {
+    const match = priority.match(/\((.*?)\)/);
+    if (match && match[1]) return match[1].trim();
+    return priority.replace(/^P\d+\s*-?\s*/i, "").trim() || priority;
+  };
+
   const [title, setTitle] = useState(plan.title);
   const [category, setCategory] = useState(plan.category);
   const [overview, setOverview] = useState(plan.overview);
   const [testCases, setTestCases] = useState<TestCase[]>(() => {
-    return JSON.parse(JSON.stringify(plan.testCases || []));
+    const parsed = JSON.parse(JSON.stringify(plan.testCases || []));
+    return parsed.map((tc: TestCase) => ({
+      ...tc,
+      title: cleanTitle(tc.title),
+      priority: formatPriority(tc.priority),
+    }));
   });
 
   const [saving, setSaving] = useState(false);
@@ -90,7 +102,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
       id: `TC-${String(nextNum).padStart(3, "0")}`,
       title: "Yeni Test Senaryosu",
       type: "Fonksiyonel Test",
-      priority: "P2 (Yüksek)",
+      priority: "Yüksek",
       preconditions: "Sistem ve test verileri hazır olmalı.",
       steps: ["Adım 1: Test işlemini standart parametrelerle başlatın.", "Adım 2: Çıktıyı doğrulayın."],
       expectedResult: "İşlem hatasız tamamlanmalıdır.",
@@ -129,7 +141,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
         overview,
         testCases,
         totalTestCount: testCases.length,
-        criticalTestCount: testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length,
+        criticalTestCount: testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length,
       };
 
       setSuccessMsg("✓ Test planı başarıyla kaydedildi.");
@@ -334,9 +346,10 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                   onChange={(e) => handleUpdateTestCase(index, "priority", e.target.value)}
                   sx={{ minWidth: 160 }}
                 >
-                  <MenuItem value="P1 (Kritik)">P1 (Kritik)</MenuItem>
-                  <MenuItem value="P2 (Yüksek)">P2 (Yüksek)</MenuItem>
-                  <MenuItem value="P3 (Orta)">P3 (Orta)</MenuItem>
+                  <MenuItem value="Kritik">Kritik</MenuItem>
+                  <MenuItem value="Yüksek">Yüksek</MenuItem>
+                  <MenuItem value="Orta">Orta</MenuItem>
+                  <MenuItem value="Düşük">Düşük</MenuItem>
                 </TextField>
                 <TextField
                   size="small"

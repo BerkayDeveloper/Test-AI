@@ -1,0 +1,608 @@
+[
+  {
+    "level": "1. Çok Basit (Doküman/Prompt)",
+    "name": "Basit Yaş Doğrulama Kuralı",
+    "status": "SUCCESS",
+    "elapsed": 33,
+    "detectedLanguage": "Gereksinim / Doküman Spesifikasyonu (Developer Mode)",
+    "totalTestCount": 4,
+    "criticalTestCount": 4,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "Kayıt Yaş Doğrulaması",
+        "title": "Kullanıcı yaş doğrulama kuralı: 18 yaşından küçük kullanıcılar sisteme üye ...",
+        "type": "İş Mantığı ve Entegrasyon Testi (Developer Core)",
+        "priority": "Kritik",
+        "preconditions": "Modül ve bağımlılıkları test ortamında ayağa kaldırılmalı. Veri girdisi: \"Kullanıcı yaş doğrulama kuralı: 18 yaşından k\"",
+        "steps": [
+          "Adım 1: Giriş verisi olarak tanımlanan şartı hazırlayın: \"Kullanıcı yaş doğrulama kuralı: 18 yaşından küçük kullanıcılar sisteme üye olama\"",
+          "Adım 2: İlgili iş mantığını tetikleyin ve dönen nesnenin/yanıtın şema yapısını, dönüş tiplerini doğrulayın.",
+          "Adım 3: Süreç sonunda ilgili veritabanı/hafıza durumunun (state mutation) kurala tam uygun değiştiğini teyit edin."
+        ],
+        "expectedResult": "Verilen spesifikasyondaki \"Kullanıcı yaş doğrulama kuralı: 18 yaşından küçük \" kuralı tam doğrulukla icra edilir ve hiçbir yan etki hatası oluşmaz."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "Gereksinim Kuralı #2",
+        "title": "\"Hatalı yaş girildiğinde AgeRestrictionException fırlatılmalıdır.\" Kural Doğrulaması",
+        "type": "Teknik Kural Testi (Logic Specification)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Hatalı yaş girildiğinde AgeRestrictionException fı\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Hatalı yaş girildiğinde AgeRestrictionException fırlatılmalıdır.\"",
+          "Adım 2: Kuralın gerektirdiği koşulu sağlayarak metodu çağırın ve durum bayraklarını kontrol edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Hatalı yaş girildiğinde AgeRestrictionException fırlatılmalı\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "Erişim Güvenliği ve Kural İhlali Filtresi",
+        "title": "\"Kayıt Yaş Doğrulaması\" İhlal ve Güvenlik Filtresi Doğrulaması",
+        "type": "Güvenlik & Kısıtlama Testi (Security Guard)",
+        "priority": "Kritik",
+        "preconditions": "Güvenlik kural filtreleri ve exception handler aktif olmalı.",
+        "steps": [
+          "Adım 1: 'Kayıt Yaş Doğrulaması' için belirlenen kısıtlamayı doğrudan ihlal eden girdi veya yetkisiz istek simüle edin.",
+          "Adım 2: Sistem filtresinin bu isteği iş mantığına (business logic) ulaşmadan blokladığını ve uygun HTTP 403 / Domain Exception ürettiğini doğrulayın.",
+          "Adım 3: Güvenlik ihlali logunun (audit log) ve güvenlik alarmının üretildiğini teyit edin."
+        ],
+        "expectedResult": "Kısıtlama ve güvenlik kuralı tavizsiz uygulanır; kural ihlali durumunda işlem anında kesilir."
+      },
+      {
+        "id": "DEV-004",
+        "targetComponent": "Hata Toleransı & Exception Handler",
+        "title": "\"Kayıt Yaş Doğrulaması\" İçin Null, Tip Uyuşmazlığı ve İstisna (Exception) Testi",
+        "type": "İstisna & Dayanıklılık Testi (Robustness)",
+        "priority": "Yüksek",
+        "preconditions": "Modül loglama seviyesi DEBUG moduna alınmış olmalı.",
+        "steps": [
+          "Adım 1: 'Kayıt Yaş Doğrulaması' için tanımlanan girdilere null, undefined, boş string veya beklenmedik tipte veri gönderin.",
+          "Adım 2: Sistemin yakalanmamış istisna (unhandled rejection / null pointer) ile çökmediğini, kontrollü hata ürettiğini doğrulayın.",
+          "Adım 3: Sistem loglarında açıklayıcı ve izlenebilir (correlation ID içeren) hata kaydının oluştuğunu teyit edin."
+        ],
+        "expectedResult": "Bileşen sınır koşullarında çökmeye dirençlidir ve tutarlı hata nesneleri üretir."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Girilen doküman ve prompt analiz edildi (2 kural maddesi tespit edildi). \"Kayıt Yaş Doğrulaması\" kapsamındaki tüm iş kuralları, durum değişimleri, sınır değerler ve exception akışları doğrudan girdiğiniz verileri tarif edecek şekilde 4 adet test senaryosu ile modellendi."
+  },
+  {
+    "level": "1. Çok Basit (Kod - Python)",
+    "name": "Basit İndirim Hesaplama Fonksiyonu",
+    "status": "SUCCESS",
+    "elapsed": 8,
+    "detectedLanguage": "Python (Developer Mode)",
+    "totalTestCount": 1,
+    "criticalTestCount": 1,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "calculate_discount",
+        "title": "calculate_discount - 'def calculate_discount(price: float, discount_percent: float)' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'calculate_discount' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'def calculate_discount(price: float, discount_percent: float)' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'calculate_discount' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Dil: Python • 4 satır eklendi, 0 satır çıkarıldı. İncelenen bileşenler (İşlevsel Kod Blokları) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel 1 adet test senaryosu üretildi."
+  },
+  {
+    "level": "2. Orta (Doküman/Prompt)",
+    "name": "Sepet İndirim Kuponu Doğrulama ve Uygulama",
+    "status": "SUCCESS",
+    "elapsed": 8,
+    "detectedLanguage": "Gereksinim / Doküman Spesifikasyonu (Developer Mode)",
+    "totalTestCount": 7,
+    "criticalTestCount": 7,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "Sepet İndirim Kuponu Doğrulama ve Uygulama",
+        "title": "Minimum sepet tutarı 150 TL olmalıdır.",
+        "type": "İş Mantığı ve Entegrasyon Testi (Developer Core)",
+        "priority": "Kritik",
+        "preconditions": "Modül ve bağımlılıkları test ortamında ayağa kaldırılmalı. Veri girdisi: \"Minimum sepet tutarı 150 TL olmalıdır.\"",
+        "steps": [
+          "Adım 1: Giriş verisi olarak tanımlanan şartı hazırlayın: \"Minimum sepet tutarı 150 TL olmalıdır.\"",
+          "Adım 2: İlgili iş mantığını tetikleyin ve dönen nesnenin/yanıtın şema yapısını, dönüş tiplerini doğrulayın.",
+          "Adım 3: Süreç sonunda ilgili veritabanı/hafıza durumunun (state mutation) kurala tam uygun değiştiğini teyit edin."
+        ],
+        "expectedResult": "Verilen spesifikasyondaki \"Minimum sepet tutarı 150 TL olmalıdır.\" kuralı tam doğrulukla icra edilir ve hiçbir yan etki hatası oluşmaz."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "Gereksinim Kuralı #2",
+        "title": "\"İndirim kuponu sepet tutarının maksimum %20'si kadar indirim sağlayabi...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"İndirim kuponu sepet tutarının maksimum %20'si kad\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"İndirim kuponu sepet tutarının maksimum %20'si kadar indirim sağlayabilir.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (20) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"İndirim kuponu sepet tutarının maksimum %20'si kadar indirim\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "Gereksinim Kuralı #3",
+        "title": "\"Kupon kodu tek kullanımlıktır ve 15 dakika içinde tamamlanmalıdır.\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Kupon kodu tek kullanımlıktır ve 15 dakika içinde \"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Kupon kodu tek kullanımlıktır ve 15 dakika içinde tamamlanmalıdır.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (15 dakika) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Kupon kodu tek kullanımlıktır ve 15 dakika içinde tamamlanma\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-004",
+        "targetComponent": "Gereksinim Kuralı #4",
+        "title": "\"Geçersiz veya kullanılmış kupon girildiğinde CouponInvalidException fı...\" Kural Doğrulaması",
+        "type": "Teknik Kural Testi (Logic Specification)",
+        "priority": "Yüksek",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Geçersiz veya kullanılmış kupon girildiğinde Coupo\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Geçersiz veya kullanılmış kupon girildiğinde CouponInvalidException fırlatılmalıdır.\"",
+          "Adım 2: Kuralın gerektirdiği koşulu sağlayarak metodu çağırın ve durum bayraklarını kontrol edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Geçersiz veya kullanılmış kupon girildiğinde CouponInvalidEx\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-005",
+        "targetComponent": "Gereksinim Kuralı #5",
+        "title": "\"Başarılı işlemde sepet toplamı ve indirim tutarı veritabanı audit logu...\" Kural Doğrulaması",
+        "type": "Teknik Kural Testi (Logic Specification)",
+        "priority": "Yüksek",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Başarılı işlemde sepet toplamı ve indirim tutarı v\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Başarılı işlemde sepet toplamı ve indirim tutarı veritabanı audit loguna yazılmalıdır.\"",
+          "Adım 2: Kuralın gerektirdiği koşulu sağlayarak metodu çağırın ve durum bayraklarını kontrol edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Başarılı işlemde sepet toplamı ve indirim tutarı veritabanı \" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-006",
+        "targetComponent": "İşlem Bütünlüğü ve Matematiksel Hesaplama",
+        "title": "Hassas Tutar Hesaplaması, İndirim Limitleri ve Çift İstek İdempotency Testi",
+        "type": "Bütünlük & Idempotency Testi (Data Integrity)",
+        "priority": "Kritik",
+        "preconditions": "Ödeme veya sepet servisi izole test veritabanında başlatılmalı.",
+        "steps": [
+          "Adım 1: Dökümandaki kurallar uyarınca hesaplama formülünü uç değerler (0 TL, küsuratlı float değerler, minimum sepet) ile çalıştırın.",
+          "Adım 2: Aynı işlem için eşzamanlı (concurrency) iki istek göndererek çift harcama veya mükerrer indirim uygulanmadığını doğrulayın.",
+          "Adım 3: İşlem hata aldığında veya iptal edildiğinde (rollback) bakiyenin/envanterin önceki haline eksiksiz döndüğünü teyit edin."
+        ],
+        "expectedResult": "Hesaplamalar kuruş hassasiyetinde tutarlı olmalı; eşzamanlı istekler işlemi mükerrer tetiklememelidir."
+      },
+      {
+        "id": "DEV-007",
+        "targetComponent": "Hata Toleransı & Exception Handler",
+        "title": "\"Sepet İndirim Kuponu Doğrulama ve Uygulama\" İçin Null, Tip Uyuşmazlığı ve İstisna (Exception) Testi",
+        "type": "İstisna & Dayanıklılık Testi (Robustness)",
+        "priority": "Yüksek",
+        "preconditions": "Modül loglama seviyesi DEBUG moduna alınmış olmalı.",
+        "steps": [
+          "Adım 1: 'Sepet İndirim Kuponu Doğrulama ve Uygulama' için tanımlanan girdilere null, undefined, boş string veya beklenmedik tipte veri gönderin.",
+          "Adım 2: Sistemin yakalanmamış istisna (unhandled rejection / null pointer) ile çökmediğini, kontrollü hata ürettiğini doğrulayın.",
+          "Adım 3: Sistem loglarında açıklayıcı ve izlenebilir (correlation ID içeren) hata kaydının oluştuğunu teyit edin."
+        ],
+        "expectedResult": "Bileşen sınır koşullarında çökmeye dirençlidir ve tutarlı hata nesneleri üretir."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Girilen doküman ve prompt analiz edildi (5 kural maddesi tespit edildi). \"Sepet İndirim Kuponu Doğrulama ve Uygulama\" kapsamındaki tüm iş kuralları, durum değişimleri, sınır değerler ve exception akışları doğrudan girdiğiniz verileri tarif edecek şekilde 7 adet test senaryosu ile modellendi."
+  },
+  {
+    "level": "2. Orta (Kod - TypeScript Sınıfı)",
+    "name": "JWT Kimlik Doğrulama Servisi",
+    "status": "SUCCESS",
+    "elapsed": 7,
+    "detectedLanguage": "TypeScript / JavaScript (Developer Mode)",
+    "totalTestCount": 3,
+    "criticalTestCount": 3,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "AuthenticationService",
+        "title": "AuthenticationService - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi",
+        "type": "Birim Testi (Unit Lifecycle)",
+        "priority": "Kritik",
+        "preconditions": "AuthenticationService sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.",
+        "steps": [
+          "Adım 1: 'AuthenticationService' sınıfından yeni bir örnek (instance) türetin.",
+          "Adım 2: Tanımlı özelliklerin (secretKey: string) başlangıç değerlerini ve varsayılan durumlarını assert edin.",
+          "Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın."
+        ],
+        "expectedResult": "AuthenticationService nesnesi hatasız initialize edilir, iç durum değişkenleri tutarlı başlar."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "authenticateUser",
+        "title": "authenticateUser - 'authenticateUser(username: string, passwordHash: string): Promise<string>' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'authenticateUser' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'authenticateUser(username: string, passwordHash: string): Promise<string>' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'authenticateUser' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "revokeToken",
+        "title": "revokeToken - 'revokeToken(token: string): boolean' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'revokeToken' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'revokeToken(token: string): boolean' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'revokeToken' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Dil: TypeScript / JavaScript • 19 satır eklendi, 0 satır çıkarıldı. İncelenen bileşenler (AuthenticationService) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel 3 adet test senaryosu üretildi."
+  },
+  {
+    "level": "2. Orta (Diff - Unity C#)",
+    "name": "Karakter Can Yenilenmesi ve Zırh Katsayısı",
+    "status": "SUCCESS",
+    "elapsed": 6,
+    "detectedLanguage": "Unity C# (Oyun Geliştirme) (Developer Mode)",
+    "totalTestCount": 3,
+    "criticalTestCount": 3,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "PlayerCombat",
+        "title": "PlayerCombat - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi",
+        "type": "Birim Testi (Unit Lifecycle)",
+        "priority": "Kritik",
+        "preconditions": "PlayerCombat sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.",
+        "steps": [
+          "Adım 1: 'PlayerCombat' sınıfından yeni bir örnek (instance) türetin.",
+          "Adım 2: Tanımlı özelliklerin (int maxHealth, float armorFactor) başlangıç değerlerini ve varsayılan durumlarını assert edin.",
+          "Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın."
+        ],
+        "expectedResult": "PlayerCombat nesnesi hatasız initialize edilir, iç durum değişkenleri tutarlı başlar."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "TakeDamage",
+        "title": "TakeDamage - 'void TakeDamage(int damage)' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması (Değiştirilen/Güncellenen)",
+        "type": "Regresyon & Mantık Testi (Mutation Contract)",
+        "priority": "Kritik",
+        "preconditions": "'TakeDamage' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'void TakeDamage(int damage)' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'TakeDamage' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "Heal",
+        "title": "Heal - 'void Heal(int amount)' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması (Değiştirilen/Güncellenen)",
+        "type": "Regresyon & Mantık Testi (Mutation Contract)",
+        "priority": "Kritik",
+        "preconditions": "'Heal' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'void Heal(int amount)' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'Heal' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Dil: Unity C# (Oyun Geliştirme) • 11 satır eklendi, 3 satır çıkarıldı. İncelenen bileşenler (PlayerCombat) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel 3 adet test senaryosu üretildi."
+  },
+  {
+    "level": "3. Çok Karmaşık (Doküman/Prompt)",
+    "name": "Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi",
+    "status": "SUCCESS",
+    "elapsed": 7,
+    "detectedLanguage": "Gereksinim / Doküman Spesifikasyonu (Developer Mode)",
+    "totalTestCount": 9,
+    "criticalTestCount": 9,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu",
+        "title": "Tüm ödeme istekleri istemci tarafından iletilen benzersiz X-Idempotency-Key...",
+        "type": "İş Mantığı ve Entegrasyon Testi (Developer Core)",
+        "priority": "Kritik",
+        "preconditions": "Modül ve bağımlılıkları test ortamında ayağa kaldırılmalı. Veri girdisi: \"Tüm ödeme istekleri istemci tarafından iletil\"",
+        "steps": [
+          "Adım 1: Giriş verisi olarak tanımlanan şartı hazırlayın: \"Tüm ödeme istekleri istemci tarafından iletilen benzersiz X-Idempotency-Key (UUI\"",
+          "Adım 2: İlgili iş mantığını tetikleyin ve dönen nesnenin/yanıtın şema yapısını, dönüş tiplerini doğrulayın.",
+          "Adım 3: Süreç sonunda ilgili veritabanı/hafıza durumunun (state mutation) kurala tam uygun değiştiğini teyit edin."
+        ],
+        "expectedResult": "Verilen spesifikasyondaki \"Tüm ödeme istekleri istemci tarafından iletilen be\" kuralı tam doğrulukla icra edilir ve hiçbir yan etki hatası oluşmaz."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "Gereksinim Kuralı #2",
+        "title": "\"Dağıtık sistemde race condition ve çift çekim riskine karşı Redis taba...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Dağıtık sistemde race condition ve çift çekim risk\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Dağıtık sistemde race condition ve çift çekim riskine karşı Redis tabanlı Redlock dağıtık kilit mekanizması 5000 ms TTL ile devreye alınmalıdır.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (5000 ms) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Dağıtık sistemde race condition ve çift çekim riskine karşı \" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "Gereksinim Kuralı #3",
+        "title": "\"3D-Secure doğrulama adımı için azami bekleme süresi 180 saniye olarak ...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"3D-Secure doğrulama adımı için azami bekleme süres\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"3D-Secure doğrulama adımı için azami bekleme süresi 180 saniye olarak tanımlanmıştır; süre aşımında işlem otomatik CANCELLED durumuna çekilmelidir.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (3, 180 saniye) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"3D-Secure doğrulama adımı için azami bekleme süresi 180 sani\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-004",
+        "targetComponent": "Gereksinim Kuralı #4",
+        "title": "\"Ödeme onaylandığında işlem tutarı, POS komisyon oranı (örneğin %1.85 +...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Ödeme onaylandığında işlem tutarı, POS komisyon or\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Ödeme onaylandığında işlem tutarı, POS komisyon oranı (örneğin %1.85 + 0.45 TL) ve net hakediş kuruş hassasiyetinde hesaplanıp Ledger tablosuna çift kayıtlı muhasebe (Double-Entry Bookkeeping) formatında yazılmalıdır.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (1.85, 0.45 TL) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Ödeme onaylandığında işlem tutarı, POS komisyon oranı (örneğ\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-005",
+        "targetComponent": "Gereksinim Kuralı #5",
+        "title": "\"Veritabanı deadlock veya harici gateway zaman aşımı durumunda işlem ku...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Veritabanı deadlock veya harici gateway zaman aşım\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Veritabanı deadlock veya harici gateway zaman aşımı durumunda işlem kuyruğuna (Dead Letter Queue) fırlatılmalı ve 3 kademeli (1s, 5s, 15s) exponential backoff ile tekrar denenmelidir.\"",
+          "Adım 2: Direktifte geçen kritik eşik değerlerini (3, 1, 5, 15) sınırda, sınırın 1 altı ve 1 üstünde test edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Veritabanı deadlock veya harici gateway zaman aşımı durumund\" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-006",
+        "targetComponent": "Gereksinim Kuralı #6",
+        "title": "\"Kısmi iade (partial refund) işlemlerinde toplam iade tutarı hiçbir koş...\" Kural Doğrulaması",
+        "type": "Sınır Değer / Kısıtlama Testi (Boundary)",
+        "priority": "Kritik",
+        "preconditions": "Test harness hazır olmalı. Odak kural: \"Kısmi iade (partial refund) işlemlerinde toplam ia\"",
+        "steps": [
+          "Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: \"Kısmi iade (partial refund) işlemlerinde toplam iade tutarı hiçbir koşulda orijinal sipariş tutarını aşamaz; aşması halinde OverRefundLimitException fırlatılmalıdır.\"",
+          "Adım 2: Kuralın gerektirdiği koşulu sağlayarak metodu çağırın ve durum bayraklarını kontrol edin.",
+          "Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.",
+          "Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın."
+        ],
+        "expectedResult": "Metinde belirtilen \"Kısmi iade (partial refund) işlemlerinde toplam iade tutarı \" şartı tavizsiz karşılanmalı, hiçbir koşulda tanımsız davranışa izin verilmemelidir."
+      },
+      {
+        "id": "DEV-007",
+        "targetComponent": "Erişim Güvenliği ve Kural İhlali Filtresi",
+        "title": "\"Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu\" İhlal ve Güvenlik Filtresi Doğrulaması",
+        "type": "Güvenlik & Kısıtlama Testi (Security Guard)",
+        "priority": "Kritik",
+        "preconditions": "Güvenlik kural filtreleri ve exception handler aktif olmalı.",
+        "steps": [
+          "Adım 1: 'Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu' için belirlenen kısıtlamayı doğrudan ihlal eden girdi veya yetkisiz istek simüle edin.",
+          "Adım 2: Sistem filtresinin bu isteği iş mantığına (business logic) ulaşmadan blokladığını ve uygun HTTP 403 / Domain Exception ürettiğini doğrulayın.",
+          "Adım 3: Güvenlik ihlali logunun (audit log) ve güvenlik alarmının üretildiğini teyit edin."
+        ],
+        "expectedResult": "Kısıtlama ve güvenlik kuralı tavizsiz uygulanır; kural ihlali durumunda işlem anında kesilir."
+      },
+      {
+        "id": "DEV-008",
+        "targetComponent": "İşlem Bütünlüğü ve Matematiksel Hesaplama",
+        "title": "Hassas Tutar Hesaplaması, İndirim Limitleri ve Çift İstek İdempotency Testi",
+        "type": "Bütünlük & Idempotency Testi (Data Integrity)",
+        "priority": "Kritik",
+        "preconditions": "Ödeme veya sepet servisi izole test veritabanında başlatılmalı.",
+        "steps": [
+          "Adım 1: Dökümandaki kurallar uyarınca hesaplama formülünü uç değerler (0 TL, küsuratlı float değerler, minimum sepet) ile çalıştırın.",
+          "Adım 2: Aynı işlem için eşzamanlı (concurrency) iki istek göndererek çift harcama veya mükerrer indirim uygulanmadığını doğrulayın.",
+          "Adım 3: İşlem hata aldığında veya iptal edildiğinde (rollback) bakiyenin/envanterin önceki haline eksiksiz döndüğünü teyit edin."
+        ],
+        "expectedResult": "Hesaplamalar kuruş hassasiyetinde tutarlı olmalı; eşzamanlı istekler işlemi mükerrer tetiklememelidir."
+      },
+      {
+        "id": "DEV-009",
+        "targetComponent": "Hata Toleransı & Exception Handler",
+        "title": "\"Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu\" İçin Null, Tip Uyuşmazlığı ve İstisna (Exception) Testi",
+        "type": "İstisna & Dayanıklılık Testi (Robustness)",
+        "priority": "Yüksek",
+        "preconditions": "Modül loglama seviyesi DEBUG moduna alınmış olmalı.",
+        "steps": [
+          "Adım 1: 'Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu' için tanımlanan girdilere null, undefined, boş string veya beklenmedik tipte veri gönderin.",
+          "Adım 2: Sistemin yakalanmamış istisna (unhandled rejection / null pointer) ile çökmediğini, kontrollü hata ürettiğini doğrulayın.",
+          "Adım 3: Sistem loglarında açıklayıcı ve izlenebilir (correlation ID içeren) hata kaydının oluştuğunu teyit edin."
+        ],
+        "expectedResult": "Bileşen sınır koşullarında çökmeye dirençlidir ve tutarlı hata nesneleri üretir."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Girilen doküman ve prompt analiz edildi (6 kural maddesi tespit edildi). \"Çok Kanallı Dağıtık Ödeme ve Mutabakat Sistemi Spesifikasyonu\" kapsamındaki tüm iş kuralları, durum değişimleri, sınır değerler ve exception akışları doğrudan girdiğiniz verileri tarif edecek şekilde 9 adet test senaryosu ile modellendi."
+  },
+  {
+    "level": "3. Çok Karmaşık (Kod - Çok Sınıflı / TS)",
+    "name": "Dağıtık Sipariş ve Stok Rezervasyon Motoru",
+    "status": "SUCCESS",
+    "elapsed": 5,
+    "detectedLanguage": "TypeScript / JavaScript (Developer Mode)",
+    "totalTestCount": 5,
+    "criticalTestCount": 5,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "InventoryCoordinator",
+        "title": "InventoryCoordinator - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi",
+        "type": "Birim Testi (Unit Lifecycle)",
+        "priority": "Kritik",
+        "preconditions": "InventoryCoordinator sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.",
+        "steps": [
+          "Adım 1: 'InventoryCoordinator' sınıfından yeni bir örnek (instance) türetin.",
+          "Adım 2: Tanımlı özelliklerin (inventory: InventoryCoordinator, eventBus: EventEmitter, isLocked: boolean) başlangıç değerlerini ve varsayılan durumlarını assert edin.",
+          "Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın."
+        ],
+        "expectedResult": "InventoryCoordinator nesnesi hatasız initialize edilir, iç durum değişkenleri tutarlı başlar."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "OrderProcessingEngine",
+        "title": "OrderProcessingEngine - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi",
+        "type": "Birim Testi (Unit Lifecycle)",
+        "priority": "Kritik",
+        "preconditions": "OrderProcessingEngine sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.",
+        "steps": [
+          "Adım 1: 'OrderProcessingEngine' sınıfından yeni bir örnek (instance) türetin.",
+          "Adım 2: Tanımlı özelliklerin (inventory: InventoryCoordinator, eventBus: EventEmitter, isLocked: boolean) başlangıç değerlerini ve varsayılan durumlarını assert edin.",
+          "Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın."
+        ],
+        "expectedResult": "OrderProcessingEngine nesnesi hatasız initialize edilir, iç durum değişkenleri tutarlı başlar."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "reserveStock",
+        "title": "reserveStock - 'reserveStock(sku: string, qty: number): boolean' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'reserveStock' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'reserveStock(sku: string, qty: number): boolean' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'reserveStock' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      },
+      {
+        "id": "DEV-004",
+        "targetComponent": "releaseStock",
+        "title": "releaseStock - 'releaseStock(sku: string, qty: number): void' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'releaseStock' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'releaseStock(sku: string, qty: number): void' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'releaseStock' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      },
+      {
+        "id": "DEV-005",
+        "targetComponent": "processOrder",
+        "title": "processOrder - 'processOrder(orderId: string, items: OrderItem[]): Promise<boolean>' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması",
+        "type": "Metot Mantık Testi (Contract & Logic)",
+        "priority": "Kritik",
+        "preconditions": "'processOrder' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'processOrder(orderId: string, items: OrderItem[]): Promise<boolean>' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'processOrder' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Dil: TypeScript / JavaScript • 58 satır eklendi, 0 satır çıkarıldı. İncelenen bileşenler (InventoryCoordinator, OrderProcessingEngine) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel 5 adet test senaryosu üretildi."
+  },
+  {
+    "level": "3. Çok Karmaşık (Diff - Refactoring)",
+    "name": "Sipariş Akışı Dağıtık Kilit & Idempotency Refactor",
+    "status": "SUCCESS",
+    "elapsed": 6,
+    "detectedLanguage": "TypeScript / JavaScript (Developer Mode)",
+    "totalTestCount": 3,
+    "criticalTestCount": 3,
+    "testCases": [
+      {
+        "id": "DEV-001",
+        "targetComponent": "OrderService",
+        "title": "OrderService - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi",
+        "type": "Birim Testi (Unit Lifecycle)",
+        "priority": "Kritik",
+        "preconditions": "OrderService sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.",
+        "steps": [
+          "Adım 1: 'OrderService' sınıfından yeni bir örnek (instance) türetin.",
+          "Adım 2: Tanımlı özelliklerin (redisClient: any, auditLogger: any, idempotencyCache: Set<string>) başlangıç değerlerini ve varsayılan durumlarını assert edin.",
+          "Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın."
+        ],
+        "expectedResult": "OrderService nesnesi hatasız initialize edilir, iç durum değişkenleri tutarlı başlar."
+      },
+      {
+        "id": "DEV-002",
+        "targetComponent": "processOrder",
+        "title": "processOrder - 'processOrder(orderId: string, idempotencyKey: string, amount: number): Promise<boolean>' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması (Değiştirilen/Güncellenen)",
+        "type": "Regresyon & Mantık Testi (Mutation Contract)",
+        "priority": "Kritik",
+        "preconditions": "'processOrder' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.",
+        "steps": [
+          "Adım 1: 'processOrder(orderId: string, idempotencyKey: string, amount: number): Promise<boolean>' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin."
+        ],
+        "expectedResult": "'processOrder' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      },
+      {
+        "id": "DEV-003",
+        "targetComponent": "rollbackTransaction",
+        "title": "rollbackTransaction - 'rollbackTransaction(orderId: string): Promise<void>' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması (Yeni Eklenen)",
+        "type": "Yeni Metot Testi (New Feature Contract)",
+        "priority": "Kritik",
+        "preconditions": "'rollbackTransaction' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı. [Yeni Metot - Bağımlılık İzolasyonu Sağlanmalı]",
+        "steps": [
+          "Adım 1: 'rollbackTransaction(orderId: string): Promise<void>' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.",
+          "Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.",
+          "Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.",
+          "Adım 4: Bu metot yeni eklendiği için mevcut mimari akışlarda yan etki ve regresyon oluşturmadığını uçtan uca doğrulayın."
+        ],
+        "expectedResult": "'rollbackTransaction' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır."
+      }
+    ],
+    "overview": "[Developer Perspektifi] Dil: TypeScript / JavaScript • 25 satır eklendi, 3 satır çıkarıldı. İncelenen bileşenler (OrderService) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel 3 adet test senaryosu üretildi."
+  }
+]

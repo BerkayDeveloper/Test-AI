@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { generateUniversalTestPlan } from "../services/testPlanGenerator";
 import { dbService } from "../services/dbService";
+import { cleanTitle } from "../utils/titleCleaner";
 
 export const analysisController = {
   // POST /api/analyze
@@ -23,6 +24,10 @@ export const analysisController = {
 
       // Test Adımları Motorunu Çalıştır
       const testPlan = generateUniversalTestPlan(title, safeCategory, safeOldText, safeNewText, safePersona);
+      testPlan.testCases = testPlan.testCases.map((tc) => ({
+        ...tc,
+        title: cleanTitle(tc.title),
+      }));
 
       // Veritabanına kaydet (previousContent ve newContent TAM OLARAK saklanır)
       const id = `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -63,15 +68,17 @@ export const analysisController = {
     try {
       const records = await dbService.getAllAnalyses();
       const formatted = records.map((r) => {
-        let testCases = [];
+        let testCases: any[] = [];
         try {
           testCases = JSON.parse(r.recommendations);
         } catch {}
 
-        let impactAreas = [];
-        try {
-          impactAreas = JSON.parse(r.impactAreas);
-        } catch {}
+        testCases = testCases.map((tc) => ({
+          ...tc,
+          title: cleanTitle(tc.title),
+        }));
+
+        const impactAreas = testCases.map((t) => t.title);
 
         return {
           id: r.id,
@@ -106,10 +113,15 @@ export const analysisController = {
         return res.status(404).json({ error: "Belirtilen analiz kaydı bulunamadı." });
       }
 
-      let testCases = [];
+      let testCases: any[] = [];
       try {
         testCases = JSON.parse(record.recommendations);
       } catch {}
+
+      testCases = testCases.map((tc) => ({
+        ...tc,
+        title: cleanTitle(tc.title),
+      }));
 
       return res.json({
         id: record.id,
@@ -155,9 +167,13 @@ export const analysisController = {
       if (typeof diffSummary === "string") updateData.diffSummary = diffSummary;
 
       if (Array.isArray(testCases)) {
-        updateData.recommendations = JSON.stringify(testCases);
-        updateData.impactAreas = JSON.stringify(testCases.map((t: any) => t.title || ""));
-        const criticalCount = testCases.filter((t: any) => t.priority?.includes("P1") || t.priority?.includes("P2")).length;
+        const cleanedCases = testCases.map((tc: any) => ({
+          ...tc,
+          title: cleanTitle(tc.title),
+        }));
+        updateData.recommendations = JSON.stringify(cleanedCases);
+        updateData.impactAreas = JSON.stringify(cleanedCases.map((t: any) => t.title || ""));
+        const criticalCount = cleanedCases.filter((t: any) => t.priority?.includes("Kritik") || t.priority?.includes("Yüksek") || t.priority?.includes("P1") || t.priority?.includes("P2")).length;
         updateData.riskLevel = criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM";
         updateData.riskScore = Math.min(criticalCount * 15 + 25, 95);
       }

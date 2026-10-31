@@ -20,6 +20,7 @@ import {
   DialogActions,
 } from "@mui/material";
 import { AnalysisHistoryItem, TestPlanResult } from "../types";
+import { cleanTitle } from "../utils/titleCleaner";
 
 interface HistoryArchiveProps {
   history: AnalysisHistoryItem[];
@@ -53,14 +54,19 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
   });
 
   const getPriorityColor = (risk: string = "") => {
-    if (risk === "CRITICAL" || risk.includes("P1")) return "#ef4444";
-    if (risk === "HIGH" || risk.includes("P2")) return "#f97316";
-    if (risk === "MEDIUM" || risk.includes("P3")) return "#f59e0b";
+    const r = risk.toLowerCase();
+    if (r === "critical" || r.includes("kritik") || r.includes("p1")) return "#ef4444";
+    if (r === "high" || r.includes("yüksek") || r.includes("p2")) return "#f97316";
+    if (r === "medium" || r.includes("orta") || r.includes("normal") || r.includes("p3")) return "#f59e0b";
     return "#10b981";
   };
 
   const convertToTestPlanResult = (item: AnalysisHistoryItem): TestPlanResult => {
-    const cases = Array.isArray(item.testCases) ? item.testCases : [];
+    const rawCases = Array.isArray(item.testCases) ? item.testCases : [];
+    const cases = rawCases.map((tc) => ({
+      ...tc,
+      title: cleanTitle(tc.title),
+    }));
     return {
       id: item.id,
       title: item.title || "İsimsiz Test Planı",
@@ -68,7 +74,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
       overview: item.diffSummary || "",
       totalTestCount: item.totalTestCount || cases.length,
       criticalTestCount: cases.filter(
-        (t) => t?.priority?.includes("P1") || t?.priority?.includes("P2")
+        (t) => t?.priority?.includes("Kritik") || t?.priority?.includes("Yüksek") || t?.priority?.includes("P1") || t?.priority?.includes("P2")
       ).length,
       testCases: cases,
       createdAt: item.createdAt || new Date().toISOString(),

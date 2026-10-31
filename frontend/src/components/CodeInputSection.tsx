@@ -111,7 +111,11 @@ interface CodeInputSectionProps {
   onSelectTemplate: (tpl: TemplateItem) => void;
   onOpenModal: () => void;
   onDeleteCustomTemplate: (customIndex: number, e: React.MouseEvent) => void;
-  onSubmit: () => void;
+  onSubmit: (customOverride?: {
+    customTitle?: string;
+    customNewContent?: string;
+    customPreviousContent?: string;
+  }) => void;
   loading: boolean;
   errorMsg: string | null;
   hasResult: boolean;
@@ -183,15 +187,15 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
       alert("Lütfen bir senaryo veya değişiklik açıklaması (prompt) girin.");
       return;
     }
-    // Başlık boşsa ilk satırdan üret
+    const derivedTitle = title.trim() || promptText.trim().split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) || "Özel Değişiklik Talebi";
     if (!title.trim()) {
-      const firstLine = promptText.trim().split("\n")[0].replace(/^#+\s*/, "").slice(0, 60);
-      setTitle(firstLine || "Özel Değişiklik Talebi");
+      setTitle(derivedTitle);
     }
     setNewContent(promptText);
-    setTimeout(() => {
-      onSubmit();
-    }, 50);
+    onSubmit({
+      customTitle: derivedTitle,
+      customNewContent: promptText,
+    });
   };
 
   // Prompt'tan Kod Şablonuna Dönüştürme (AI / Akıllı Motor)
@@ -917,7 +921,10 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
               if (compareMode === "dual") {
                 setPreviousContent(fileOldContent);
               }
-              setTimeout(() => onSubmit(), 50);
+              onSubmit({
+                customNewContent: fileContent,
+                customPreviousContent: compareMode === "dual" ? fileOldContent : previousContent,
+              });
             } else {
               onSubmit();
             }

@@ -1,5 +1,6 @@
 import { TestCase } from "../types";
 import { parseCodeEntities, detectLanguage, computeDiffStats } from "./codeAnalyzerService";
+import { cleanSubject, formatDirectiveTitle } from "../utils/titleCleaner";
 
 export interface GeneratedPlan {
   overview: string;
@@ -22,6 +23,11 @@ function isDocumentOrPrompt(text: string): boolean {
   let codeCount = 0;
   for (const ind of codeIndicators) {
     if (text.includes(ind)) codeCount++;
+  }
+
+  // Eğer güçlü kod göstergeleri varsa ve blok karakterleri ({}, ;, def:) bulunuyorsa kesinlikle koddur
+  if (codeCount >= 2 && (text.includes("{") || text.includes(";") || (text.includes("def ") && text.includes(":")))) {
+    return false;
   }
 
   const naturalWords = [
@@ -94,9 +100,9 @@ function generateDeveloperDocumentPlan(
   testCases.push({
     id: nextId(),
     targetComponent: title,
-    title: `[Core Sözleşme] ${primarySummary.slice(0, 65)}${primarySummary.length > 65 ? "..." : ""}`,
+    title: formatDirectiveTitle(primarySummary),
     type: "İş Mantığı ve Entegrasyon Testi (Developer Core)",
-    priority: "P1 (Kritik)",
+    priority: "Kritik",
     preconditions: `Modül ve bağımlılıkları test ortamında ayağa kaldırılmalı. Veri girdisi: "${primarySummary.slice(0, 45)}"`,
     steps: [
       `Adım 1: Giriş verisi olarak tanımlanan şartı hazırlayın: "${primarySummary.slice(0, 80)}"`,
@@ -107,21 +113,21 @@ function generateDeveloperDocumentPlan(
   });
 
   if (directives.length > 1) {
-    directives.slice(1, 6).forEach((directive, idx) => {
-      const numbers = directive.match(/\d+[\w\s%/]*/g) || [];
+    directives.slice(1, 10).forEach((directive, idx) => {
+      const numbers = directive.match(/\d+(?:[.,]\d+)?\s*(?:tl|ms|saniye|dakika|%|adet|karakter|grup|kat)?/gi) || [];
       const hasLimit = directive.toLowerCase().includes("limit") || directive.toLowerCase().includes("dakika") || directive.toLowerCase().includes("süre") || numbers.length > 0;
 
       testCases.push({
         id: nextId(),
         targetComponent: `Gereksinim Kuralı #${idx + 2}`,
-        title: `[Kural Doğrulama] "${directive.slice(0, 60)}${directive.length > 60 ? "..." : ""}"`,
+        title: formatDirectiveTitle(directive),
         type: hasLimit ? "Sınır Değer / Kısıtlama Testi (Boundary)" : "Teknik Kural Testi (Logic Specification)",
-        priority: idx === 0 || hasLimit ? "P1 (Kritik)" : "P2 (Yüksek)",
+        priority: idx === 0 || hasLimit ? "Kritik" : "Yüksek",
         preconditions: `Test harness hazır olmalı. Odak kural: "${directive.slice(0, 50)}"`,
         steps: [
           `Adım 1: Belirtilen direktifi test etmek üzere girdiyi izole edin: "${directive}"`,
           hasLimit && numbers.length > 0
-            ? `Adım 2: Metinde geçen kritik eşik değerlerini (${numbers.join(", ")}) sınırda, sınırın 1 altı ve 1 üstünde test edin.`
+            ? `Adım 2: Direktifte geçen kritik eşik değerlerini (${numbers.map((n) => n.trim()).join(", ")}) sınırda, sınırın 1 altı ve 1 üstünde test edin.`
             : `Adım 2: Kuralın gerektirdiği koşulu sağlayarak metodu çağırın ve durum bayraklarını kontrol edin.`,
           `Adım 3: Kural ihlali durumunda sistemin çökmeden kontrollü ve anlamlı hata/exception fırlattığını teyit edin.`,
           `Adım 4: İşlem başarıyla sonlandığında loglarda ve veri tabanında beklenen durum kaydının oluştuğunu doğrulayın.`,
@@ -131,22 +137,24 @@ function generateDeveloperDocumentPlan(
     });
   }
 
-  if (
+  const isAuthOrToken =
     lowerAll.includes("token") ||
-    lowerAll.includes("auth") ||
-    lowerAll.includes("şifre") ||
-    lowerAll.includes("otp") ||
-    lowerAll.includes("sms") ||
-    lowerAll.includes("2fa") ||
     lowerAll.includes("jwt") ||
-    category === "security"
-  ) {
+    lowerAll.includes("otp") ||
+    lowerAll.includes("2fa") ||
+    lowerAll.includes("brute") ||
+    lowerAll.includes("şifre") ||
+    lowerAll.includes("yetkilendirme") ||
+    lowerAll.includes("kimlik doğrulama") ||
+    lowerAll.includes("session");
+
+  if (isAuthOrToken) {
     testCases.push({
       id: nextId(),
       targetComponent: "Yetkilendirme ve Token Koruma Katmanı",
-      title: "[Developer Güvenlik] Geçersiz Token, Süre Aşımı (Expiry) ve Brute-Force Koruması",
+      title: "Token Geçerliliği, Süre Aşımı ve Brute-Force Koruması",
       type: "Güvenlik & Exception Testi (Security Unit)",
-      priority: "P1 (Kritik)",
+      priority: "Kritik",
       preconditions: "Kimlik doğrulama filtreleri (middleware) ve şifreleme anahtarları aktif olmalı.",
       steps: [
         "Adım 1: Dökümanda belirtilen güvenlik kuralı için geçersiz veya süresi dolmuş kimlik verisiyle istek oluşturun.",
@@ -154,6 +162,21 @@ function generateDeveloperDocumentPlan(
         "Adım 3: Ardışık hatalı denemelerde (örneğin rate limit veya hesap kilidi tetikleyerek) güvenlik eşiklerinin tam zamanında devreye girdiğini test edin.",
       ],
       expectedResult: "Yetkisiz veya süresi dolmuş hiçbir istek iş mantığına ulaşamaz; güvenlik sınırları ihlal edilemez.",
+    });
+  } else if (category === "security") {
+    testCases.push({
+      id: nextId(),
+      targetComponent: "Erişim Güvenliği ve Kural İhlali Filtresi",
+      title: "Güvenlik Filtresi ve Yetkisiz Erişim Kontrolü",
+      type: "Güvenlik & Kısıtlama Testi (Security Guard)",
+      priority: "Kritik",
+      preconditions: "Güvenlik kural filtreleri ve exception handler aktif olmalı.",
+      steps: [
+        `Adım 1: '${title}' için belirlenen kısıtlamayı doğrudan ihlal eden girdi veya yetkisiz istek simüle edin.`,
+        "Adım 2: Sistem filtresinin bu isteği iş mantığına (business logic) ulaşmadan blokladığını ve uygun HTTP 403 / Domain Exception ürettiğini doğrulayın.",
+        "Adım 3: Güvenlik ihlali logunun (audit log) ve güvenlik alarmının üretildiğini teyit edin.",
+      ],
+      expectedResult: "Kısıtlama ve güvenlik kuralı tavizsiz uygulanır; kural ihlali durumunda işlem anında kesilir.",
     });
   }
 
@@ -169,9 +192,9 @@ function generateDeveloperDocumentPlan(
     testCases.push({
       id: nextId(),
       targetComponent: "İşlem Bütünlüğü ve Matematiksel Hesaplama",
-      title: "[Finans & Veri Bütünlüğü] Hassas Tutar Hesaplaması, İndirim Limitleri ve Çift İstek İdempotency Testi",
+      title: "Tutar Doğrulaması ve Çift İstek (Idempotency) Koruması",
       type: "Bütünlük & Idempotency Testi (Data Integrity)",
-      priority: "P1 (Kritik)",
+      priority: "Kritik",
       preconditions: "Ödeme veya sepet servisi izole test veritabanında başlatılmalı.",
       steps: [
         "Adım 1: Dökümandaki kurallar uyarınca hesaplama formülünü uç değerler (0 TL, küsuratlı float değerler, minimum sepet) ile çalıştırın.",
@@ -185,9 +208,9 @@ function generateDeveloperDocumentPlan(
   testCases.push({
     id: nextId(),
     targetComponent: "Hata Toleransı & Exception Handler",
-    title: `[Robustness] "${title}" İçin Null, Tip Uyuşmazlığı ve İstisna (Exception) Testi`,
+    title: "Null ve Uyumsuz Veri Tipleri Hata Toleransı",
     type: "İstisna & Dayanıklılık Testi (Robustness)",
-    priority: "P2 (Yüksek)",
+    priority: "Yüksek",
     preconditions: "Modül loglama seviyesi DEBUG moduna alınmış olmalı.",
     steps: [
       `Adım 1: '${title}' için tanımlanan girdilere null, undefined, boş string veya beklenmedik tipte veri gönderin.`,
@@ -197,7 +220,7 @@ function generateDeveloperDocumentPlan(
     expectedResult: "Bileşen sınır koşullarında çökmeye dirençlidir ve tutarlı hata nesneleri üretir.",
   });
 
-  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const criticalCount = testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length;
   const overview = `[Developer Perspektifi] Girilen doküman ve prompt analiz edildi (${directives.length} kural maddesi tespit edildi). "${title}" kapsamındaki tüm iş kuralları, durum değişimleri, sınır değerler ve exception akışları doğrudan girdiğiniz verileri tarif edecek şekilde ${testCases.length} adet test senaryosu ile modellendi.`;
 
   return {
@@ -229,20 +252,48 @@ function generateDeveloperCodePlan(
   if (classes.length > 0) {
     for (const cls of classes) {
       const snippet = cls.logicSnippet || "";
-      const fields = snippet.match(/(?:private|public|protected)?\s+(?:readonly\s+)?([A-Za-z0-9_<>]+)\s+([A-Za-z0-9_]+)\s*(=|;)/g) || [];
-      const cleanFields = fields.map((f) => f.trim()).slice(0, 3);
+      // Gerçek sınıf alanlarını (member fields / properties) yakala
+      const cleanFields: string[] = [];
+      const lines = snippet.split(/\r?\n/);
+      const ignoredTypes = new Set(["return", "const", "let", "var", "function", "async", "await", "throw", "class", "interface", "export", "import"]);
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        // C# / Java: [SerializeField] private int maxHealth = 150; veya private int count;
+        const csMatch = trimmed.match(/^(?:\[SerializeField\]\s+)?(?:(?:private|public|protected|internal)\s+)(?:readonly\s+)?([A-Za-z0-9_<>\[\]]+)\s+([A-Za-z0-9_]+)\s*(?:=.*)?;$/);
+        if (csMatch) {
+          const type = csMatch[1];
+          const name = csMatch[2];
+          if (!ignoredTypes.has(type.toLowerCase()) && !ignoredTypes.has(name.toLowerCase())) {
+            cleanFields.push(`${type} ${name}`);
+            if (cleanFields.length >= 3) break;
+            continue;
+          }
+        }
+        // TypeScript: private readonly redisClient: any; veya private activeSessions: Map<string, Date> = new Map();
+        const tsMatch = trimmed.match(/^(?:(?:private|public|protected|internal)\s+)?(?:readonly\s+)?([A-Za-z0-9_]+)\s*:\s*([A-Za-z0-9_<>\[\]\s]+?)\s*(?:=.*)?;$/);
+        if (tsMatch) {
+          const name = tsMatch[1];
+          const type = tsMatch[2].trim();
+          if (!ignoredTypes.has(name.toLowerCase()) && !ignoredTypes.has(type.toLowerCase())) {
+            cleanFields.push(`${name}: ${type}`);
+            if (cleanFields.length >= 3) break;
+            continue;
+          }
+        }
+      }
 
       testCases.push({
         id: nextId(),
         targetComponent: cls.name,
-        title: `[${cls.name}] Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi`,
+        title: `${cls.name} Constructor ve İlk Durum Doğrulaması`,
         type: "Birim Testi (Unit Lifecycle)",
-        priority: "P1 (Kritik)",
+        priority: "Kritik",
         preconditions: `${cls.name} sınıfı için mock bağımlılıklar ve test ortamı izole edilmeli.`,
         steps: [
           `Adım 1: '${cls.name}' sınıfından yeni bir örnek (instance) türetin.`,
           cleanFields.length > 0
-            ? `Adım 2: Tanımlı özelliklerin (${cleanFields.map((cf) => cf.replace(/;/g, "")).join(", ")}) başlangıç değerlerini ve varsayılan durumlarını assert edin.`
+            ? `Adım 2: Tanımlı özelliklerin (${cleanFields.join(", ")}) başlangıç değerlerini ve varsayılan durumlarını assert edin.`
             : `Adım 2: Nesnenin belleğe null olmadan ve beklenen varsayılan değerlerle yüklendiğini teyit edin.`,
           `Adım 3: Sınıfın dispose veya teardown döngüsünde kaynak sızıntısı (memory leak) bırakmadığını doğrulayın.`,
         ],
@@ -252,20 +303,26 @@ function generateDeveloperCodePlan(
   }
 
   if (methods.length > 0) {
-    for (const m of methods.slice(0, 6)) {
+    for (const m of methods.slice(0, 8)) {
       const sig = m.signature || m.name;
+      const isNewMethod = oldText.length > 0 && !oldText.includes(m.name);
+      const isModified = oldText.length > 0 && oldText.includes(m.name);
+      const methodSuffix = isNewMethod ? " (Yeni Metot)" : isModified ? " (Güncellenen Metot)" : "";
+
       testCases.push({
         id: nextId(),
         targetComponent: m.name,
-        title: `[${m.name}] '${sig}' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması`,
-        type: "Metot Mantık Testi (Contract & Logic)",
-        priority: "P1 (Kritik)",
-        preconditions: `'${m.name}' metodunun çağrılabilmesi için nesne/modül başlatılmış olmalı.`,
+        title: `${m.name} Parametre ve Sınır Değer Doğrulaması${methodSuffix}`,
+        type: isNewMethod ? "Yeni Metot Testi (New Feature Contract)" : isModified ? "Regresyon & Mantık Testi (Mutation Contract)" : "Metot Mantık Testi (Contract & Logic)",
+        priority: "Kritik",
+        preconditions: `'${m.name}' metodunun çağrılabilmesi için nesne/modül test ortamında başlatılmış olmalı.${isNewMethod ? " [Yeni Metot - Bağımlılık İzolasyonu Sağlanmalı]" : ""}`,
         steps: [
           `Adım 1: '${sig}' metodunu geçerli ve beklenen tipik parametrelerle çağırıp dönen değerin tip ve içeriğini assert edin.`,
           `Adım 2: Sınır değerler (boundary values: minimum, maksimum, 0, boş veya negatif) vererek metodun taşma veya beklenmeyen yanıt üretmediğini teyit edin.`,
           `Adım 3: Geçersiz girdilerle (null, undefined, malformed data) çağırarak uygun ArgumentException veya validation hatası ürettiğini doğrulayın.`,
-          `Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin.`,
+          isNewMethod
+            ? `Adım 4: Bu metot yeni eklendiği için mevcut mimari akışlarda yan etki ve regresyon oluşturmadığını uçtan uca doğrulayın.`
+            : `Adım 4: Metodun yan etkilerini (state mutation, harici çağrı veya database yazımı) kontrol edin.`,
         ],
         expectedResult: `'${m.name}' metodu sözleşmesine sadık kalır; sınır değerlerde ve geçersiz parametrelerde kontrollü davranır.`,
       });
@@ -277,9 +334,9 @@ function generateDeveloperCodePlan(
       {
         id: nextId(),
         targetComponent: title,
-        title: `[Fonksiyonel Kod İncelemesi] "${title}" Mantıksal Yürütme Testi`,
+        title: `${cleanSubject(title)} Mantıksal Yürütme Doğrulaması`,
         type: "Kod Yürütme Testi (Execution)",
-        priority: "P1 (Kritik)",
+        priority: "Kritik",
         preconditions: "Yazılan kod parçacığı derlenmiş ve test yürütücüsüne yüklenmiş olmalı.",
         steps: [
           "Adım 1: Kodun giriş noktasını belirlenen standart parametrelerle çalıştırın.",
@@ -291,9 +348,9 @@ function generateDeveloperCodePlan(
       {
         id: nextId(),
         targetComponent: "Hata Toleransı",
-        title: `[Hata Toleransı] "${title}" İçin Negatif Parametre ve Güvenlik Sınır Testi`,
+        title: `${cleanSubject(title)} Negatif Parametre ve Sınır Kontrolü`,
         type: "Negatif & Sınır Testi (Boundary)",
-        priority: "P2 (Yüksek)",
+        priority: "Yüksek",
         preconditions: "Test ortamı devrede olmalı.",
         steps: [
           "Adım 1: Koda sınır değerler ve beklenmedik veri türleri enjekte edin.",
@@ -304,7 +361,7 @@ function generateDeveloperCodePlan(
     );
   }
 
-  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const criticalCount = testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length;
   const overview = `[Developer Perspektifi] Dil: ${detectedLanguage} • ${diffStats.addedLinesCount} satır eklendi, ${diffStats.removedLinesCount} satır çıkarıldı. İncelenen bileşenler (${
     classes.length > 0 ? classes.map((c) => c.name).join(", ") : "İşlevsel Kod Blokları"
   }) analiz edildi; doğrudan kodun metodlarına, parametrelerine ve istisna yollarına özel ${testCases.length} adet test senaryosu üretildi.`;
@@ -351,9 +408,9 @@ function generateQADocumentPlan(
   testCases.push({
     id: nextId(),
     targetComponent: "Uçtan Uca Kullanıcı Akışı (End-to-End User Flow)",
-    title: `[Happy Path] "${mainRule.slice(0, 60)}" Standard Kullanım ve Başarı Akışı`,
+    title: "Temel Kullanıcı Akışı ve Başarılı İşlem Doğrulaması",
     type: "Kullanıcı Kabul Testi (UAT / Positive Functional)",
-    priority: "P1 (Kritik / Blocker)",
+    priority: "Kritik",
     preconditions: `Uygulama test ortamında açık, geçerli test kullanıcısı/oturum açık ve gerekli ön veriler hazır olmalı.`,
     steps: [
       `Adım 1: Kullanıcı arayüzüne veya ilgili işlem ekranına giriş yapın.`,
@@ -369,15 +426,20 @@ function generateQADocumentPlan(
   directives.forEach((directive, idx) => {
     const numbers = directive.match(/\d+[\w\s%/]*/g) || [];
     const hasNumbers = numbers.length > 0;
+    const dirTitle = formatDirectiveTitle(directive);
 
     // Sınır Değer Analizi (Boundary Value Analysis)
     if (hasNumbers || directive.toLowerCase().includes("limit") || directive.toLowerCase().includes("süre") || directive.toLowerCase().includes("en az") || directive.toLowerCase().includes("en fazla")) {
+      const boundaryTitle = dirTitle.endsWith("Kontrolü") || dirTitle.endsWith("Doğrulaması")
+        ? dirTitle
+        : `${dirTitle} Sınır Kontrolü`;
+
       testCases.push({
         id: nextId(),
         targetComponent: "Girdi Validasyonu & Sınır Kontrolü",
-        title: `[Sınır Değer Analizi] "${directive.slice(0, 55)}${directive.length > 55 ? "..." : ""}"`,
+        title: boundaryTitle,
         type: "Sınır Değer Testi (Boundary Value Analysis)",
-        priority: "P1 (Kritik)",
+        priority: "Kritik",
         preconditions: `İlgili işlem ekranı açık olmalı. Test edilecek kural: "${directive.slice(0, 50)}"`,
         steps: [
           `Adım 1: Metinde geçen tam sınır değerleri (${numbers.join(", ") || "tanımlı limit"}) girerek işlemin geçerli kabul edildiğini doğrulayın (Tam Eşik Değeri).`,
@@ -389,12 +451,16 @@ function generateQADocumentPlan(
       });
     } else {
       // Fonksiyonel İş Kuralı Uygunluğu
+      const funcTitle = dirTitle.endsWith("Kontrolü") || dirTitle.endsWith("Doğrulaması")
+        ? dirTitle
+        : `${dirTitle} Fonksiyonel Doğrulaması`;
+
       testCases.push({
         id: nextId(),
         targetComponent: "İş Kuralı Doğrulaması",
-        title: `[Fonksiyonel Doğrulama] "${directive.slice(0, 55)}${directive.length > 55 ? "..." : ""}"`,
+        title: funcTitle,
         type: "İş Kuralı Kabul Testi (Functional Specification)",
-        priority: "P2 (Yüksek)",
+        priority: "Yüksek",
         preconditions: `Test ortamında "${directive.slice(0, 45)}" kuralını tetikleyecek kullanıcı profili hazır olmalı.`,
         steps: [
           `Adım 1: Tanımlanan "${directive}" senaryosundaki adımları kullanıcı arayüzü üzerinden birebir uygulayın.`,
@@ -420,9 +486,9 @@ function generateQADocumentPlan(
     testCases.push({
       id: nextId(),
       targetComponent: "Kullanıcı Güvenlik & Doğrulama Arayüzü",
-      title: "[QA Güvenlik] Hatalı Giriş Denemeleri, Maskeleme ve Kilitlenme (Lockout) Arayüzü Testi",
+      title: "Hatalı Giriş, Maskeleme ve Hesap Kilitlenme Kontrolü",
       type: "Güvenlik & Arayüz Dayanıklılık Testi",
-      priority: "P1 (Kritik)",
+      priority: "Kritik",
       preconditions: "Giriş/doğrulama formu açık, SMS/OTP servisi test simülasyon modunda olmalı.",
       steps: [
         "Adım 1: Şifre ve OTP/kod alanına yanlış, eksik haneli veya alfanumerik geçersiz karakterler yazmayı deneyin.",
@@ -438,9 +504,9 @@ function generateQADocumentPlan(
   testCases.push({
     id: nextId(),
     targetComponent: "Kullanıcı Deneyimi & Çift Tıklama Engeli (UX/Debounce)",
-    title: `[QA UX & Dayanıklılık] "${title}" Butonuna Çift Tıklama (Double-Click) ve İşlem İptal Testi`,
+    title: "Çift Tıklama Engeli ve İşlem İptali Doğrulaması",
     type: "Kullanıcı Deneyimi & Eşzamanlılık Testi (UX & Concurrency)",
-    priority: "P2 (Yüksek)",
+    priority: "Yüksek",
     preconditions: "İlgili form doldurulmuş ve gönderme aşamasında olmalı.",
     steps: [
       `Adım 1: '${title}' işlemini tetikleyen onay butonuna çok hızlı şekilde arka arkaya 2-3 kez tıklayın (Double-click abuse).`,
@@ -455,9 +521,9 @@ function generateQADocumentPlan(
   testCases.push({
     id: nextId(),
     targetComponent: "Ağ Toleransı & Sayfa Yenileme (Regression)",
-    title: `[QA Regresyon] Ağ Bağlantı Kopması ve F5 Yenileme Durumunda Veri Bütünlüğü Testi`,
+    title: "Ağ Kesintisi ve Sayfa Yenilemede Veri Korunumu",
     type: "Regresyon ve Hata Kurtarma Testi (Resilience)",
-    priority: "P2 (Yüksek)",
+    priority: "Yüksek",
     preconditions: "Tarayıcı Geliştirici Araçları (Network tab) açık olmalı.",
     steps: [
       `Adım 1: '${title}' işlemi sırasında tarayıcıyı Offline (Çevrimdışı) moduna alın ve işlem yapmayı deneyin.`,
@@ -468,7 +534,7 @@ function generateQADocumentPlan(
     expectedResult: "Ağ kesintilerinde kullanıcıya dostça hata verilir; sayfa yenilendiğinde hiçbir veri kaybı veya UI bozulması yaşanmaz.",
   });
 
-  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const criticalCount = testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length;
   const overview = `[QA Tester Perspektifi] Girilen döküman ve gereksinimler bir Test Mühendisi gözüyle analiz edildi (${directives.length} kural ve kullanıcı senaryosu tespit edildi). Doğrudan girilen verinin kullanıcı kabul kriterleri, sınır değerleri (BVA), UI/UX geri bildirimleri, çift tıklama koruması ve negatif hata yolları test edilecek şekilde ${testCases.length} adet detaylı test senaryosu oluşturuldu.`;
 
   return {
@@ -511,9 +577,9 @@ function generateQACodePlan(
       testCases.push({
         id: nextId(),
         targetComponent: cls.name,
-        title: `[QA Kabul Testi] '${cls.name}' Bileşeninin Fonksiyonel Davranışı ve Durum Doğrulaması`,
+        title: `${cls.name} Fonksiyonel Davranış ve Durum Doğrulaması`,
         type: "Fonksiyonel Kullanıcı Testi (Functional QA)",
-        priority: "P1 (Kritik)",
+        priority: "Kritik",
         preconditions: `${cls.name} bileşeni test ortamında veya sahnede aktif ve erişilebilir olmalı.`,
         steps: [
           `Adım 1: '${cls.name}' bileşenini varsayılan başlangıç durumunda inceleyin ve tüm göstergelerin doğru başladığını doğrulayın.`,
@@ -531,9 +597,9 @@ function generateQACodePlan(
       testCases.push({
         id: nextId(),
         targetComponent: m.name,
-        title: `[QA Girdi-Çıktı Testi] '${m.name}' İşlevinde Pozitif Kullanım ve Sınır Değer Doğrulaması`,
+        title: `${m.name} Pozitif Kullanım ve Sınır Değer Kontrolü`,
         type: "Girdi & Validasyon Testi (Black-Box Testing)",
-        priority: "P2 (Yüksek)",
+        priority: "Yüksek",
         preconditions: `'${m.name}' işlevinin tetiklenebileceği ekran veya arayüz hazır olmalı.`,
         steps: [
           `Adım 1: '${m.name}' işlevine standart ve beklenen kullanıcı girdisi sağlayarak tetikleyin ve çıktının doğruluğunu gözlemleyin.`,
@@ -551,9 +617,9 @@ function generateQACodePlan(
       {
         id: nextId(),
         targetComponent: title,
-        title: `[QA Kabul] "${title}" Pozitif İş Akışı ve Kullanıcı Deneyimi Testi`,
+        title: `${cleanSubject(title)} Kullanıcı Deneyimi Doğrulaması`,
         type: "Uçtan Uca Kabul Testi (End-to-End Acceptance)",
-        priority: "P1 (Kritik)",
+        priority: "Kritik",
         preconditions: "Yeni kod değişiklikleri test ortamına kurulmuş olmalı.",
         steps: [
           "Adım 1: Değişikliğin yapıldığı ekrana gidin ve işlemi normal kullanıcı senaryosuyla baştan sona tamamlayın.",
@@ -564,9 +630,9 @@ function generateQACodePlan(
       {
         id: nextId(),
         targetComponent: "Negatif & Hata Yönetimi",
-        title: `[QA Negatif Test] "${title}" Beklenmeyen Kullanıcı Davranışları ve Dayanıklılık Testi`,
+        title: `${cleanSubject(title)} Beklenmeyen Kullanıcı Davranışları ve Dayanıklılık Kontrolü`,
         type: "Negatif & Sınır Testi (Negative / Exploratory)",
-        priority: "P2 (Yüksek)",
+        priority: "Yüksek",
         preconditions: "Sistem aktif çalışıyor olmalı.",
         steps: [
           "Adım 1: Kullanıcı olarak ardışık tıklamalar, geçersiz form doldurma veya geri/ileri butonlarıyla sistemi zorlayın.",
@@ -577,7 +643,7 @@ function generateQACodePlan(
     );
   }
 
-  const criticalCount = testCases.filter((t) => t.priority.includes("P1") || t.priority.includes("P2")).length;
+  const criticalCount = testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length;
   const overview = `[QA Tester Perspektifi] Kod değişiklikleri bir Test Mühendisi (Black-Box & Functional Testing) bakış açısıyla incelendi (${diffStats.addedLinesCount} satır eklendi, ${diffStats.removedLinesCount} satır çıkarıldı). Kodun son kullanıcıya, ekran durumlarına, validasyon mesajlarına ve uç durumlara yansıması ${testCases.length} adet test senaryosu ile modellendi.`;
 
   return {

@@ -15,6 +15,7 @@ import {
   Tooltip,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
+import { cleanTitle } from "../utils/titleCleaner";
 
 interface TestDetailViewProps {
   plan: TestPlanResult;
@@ -31,10 +32,17 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
 }) => {
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
 
+  const formatPriority = (priority: string = "") => {
+    const match = priority.match(/\((.*?)\)/);
+    if (match && match[1]) return match[1].trim();
+    return priority.replace(/^P\d+\s*-?\s*/i, "").trim() || priority;
+  };
+
   const getPriorityColor = (priority: string = "") => {
-    if (priority.includes("P1") || priority.includes("Kritik")) return "#ef4444";
-    if (priority.includes("P2") || priority.includes("Yüksek")) return "#f97316";
-    if (priority.includes("P3") || priority.includes("Orta")) return "#f59e0b";
+    const p = priority.toLowerCase();
+    if (p.includes("kritik") || p.includes("p1") || p.includes("blocker")) return "#ef4444";
+    if (p.includes("yüksek") || p.includes("p2") || p.includes("high")) return "#f97316";
+    if (p.includes("orta") || p.includes("normal") || p.includes("p3") || p.includes("medium")) return "#f59e0b";
     return "#10b981";
   };
 
@@ -51,8 +59,8 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
     md += `## Analiz Özeti\n${plan.overview}\n\n---\n\n## Test Senaryoları\n\n`;
 
     plan.testCases.forEach((tc, idx) => {
-      md += `### ${idx + 1}. [${tc.id}] ${tc.title}\n`;
-      md += `- **Öncelik:** ${tc.priority}\n`;
+      md += `### ${idx + 1}. [${tc.id}] ${cleanTitle(tc.title)}\n`;
+      md += `- **Öncelik:** ${formatPriority(tc.priority)}\n`;
       md += `- **Test Türü:** ${tc.type}\n`;
       if (tc.targetComponent) md += `- **Bileşen:** ${tc.targetComponent}\n`;
       md += `- **Ön Koşul:** ${tc.preconditions}\n`;
@@ -65,7 +73,14 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
   };
 
   const exportAsJson = () => {
-    const jsonStr = JSON.stringify(plan, null, 2);
+    const jsonStr = JSON.stringify({
+      ...plan,
+      testCases: plan.testCases.map((tc) => ({
+        ...tc,
+        title: cleanTitle(tc.title),
+        priority: formatPriority(tc.priority),
+      })),
+    }, null, 2);
     copyToClipboard(jsonStr, "JSON");
   };
 
@@ -73,8 +88,8 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
     const headers = ["Test ID", "Başlık", "Öncelik", "Tür", "Ön Koşul", "Adımlar", "Beklenen Sonuç"];
     const rows = plan.testCases.map((tc) => [
       `"${tc.id}"`,
-      `"${tc.title.replace(/"/g, '""')}"`,
-      `"${tc.priority}"`,
+      `"${cleanTitle(tc.title).replace(/"/g, '""')}"`,
+      `"${formatPriority(tc.priority)}"`,
       `"${tc.type}"`,
       `"${tc.preconditions.replace(/"/g, '""')}"`,
       `"${tc.steps.join(" | ").replace(/"/g, '""')}"`,
@@ -267,13 +282,13 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
                   }}
                 />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#f8fafc" }}>
-                  {tc.title}
+                  {cleanTitle(tc.title)}
                 </Typography>
               </Stack>
 
               <Stack direction="row" spacing={1} alignItems="center">
                 <Chip
-                  label={tc.priority}
+                  label={formatPriority(tc.priority)}
                   size="small"
                   sx={{
                     fontWeight: 700,

@@ -48,14 +48,16 @@ export function detectLanguage(code: string): { language: string; isGameDev: boo
 
 export function parseCodeEntities(code: string): CodeEntity[] {
   const entities: CodeEntity[] = [];
+  const { language } = detectLanguage(code);
+  const isPython = language === "Python" || code.includes("def ");
 
   // 1. Sınıfları tespit et (C#, Java, Python, TS/JS, C++)
-  const classRegex = /(?:public\s+|private\s+|protected\s+|internal\s+)?(?:abstract\s+|sealed\s+|static\s+)?class\s+([A-Za-z0-9_]+)/g;
+  const classRegex = /(?:export\s+)?(?:public\s+|private\s+|protected\s+|internal\s+)?(?:abstract\s+|sealed\s+|static\s+)?class\s+([A-Za-z0-9_]+)/g;
   let match: RegExpExecArray | null;
   while ((match = classRegex.exec(code)) !== null) {
     const className = match[1];
     const startIndex = match.index;
-    const snippet = code.substring(startIndex, startIndex + 800);
+    const snippet = code.substring(startIndex, startIndex + 1200);
     entities.push({
       name: className,
       kind: "class",
@@ -64,38 +66,58 @@ export function parseCodeEntities(code: string): CodeEntity[] {
     });
   }
 
-  // 2. Fonksiyon / Metotları tespit et (C#, Java, TS, Go)
-  const methodRegex = /(?:public|private|protected|internal)?\s*(?:static\s+|async\s+)?([A-Za-z0-9_<>[\]]+)\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)\s*(?:=>|\{)?/g;
-  while ((match = methodRegex.exec(code)) !== null) {
-    const returnType = match[1];
-    const methodName = match[2];
-    const params = match[3];
+  // 2. Fonksiyon / Metotları tespit et
+  if (isPython) {
+    // Python fonksiyonları: def method_name(...): veya def method_name(...) -> type:
+    const pyFuncRegex = /def\s+([A-Za-z0-9_]+)\s*\(([^)]*)\)(?:\s*->\s*[^:]+)?\s*:/g;
+    while ((match = pyFuncRegex.exec(code)) !== null) {
+      const funcName = match[1];
+      const params = match[2];
+      entities.push({
+        name: funcName,
+        kind: "function",
+        signature: `def ${funcName}(${params})`,
+        contextLines: [],
+      });
+    }
+  } else {
+    // C#, Java, TypeScript, JavaScript, Go metotları
+    const methodRegex = /(?:(?:public|private|protected|internal)\s+)?(?:static\s+)?(?:async\s+)?(?:([A-Za-z0-9_<>[\]]+)\s+)?([A-Za-z0-9_]+)\s*\(([^)]*)\)\s*(?::\s*([A-Za-z0-9_<>[\]\s]+))?\s*(?:=>|\{)/g;
+    const ignoredNames = new Set([
+      "if", "while", "for", "switch", "catch", "using", "lock", "foreach",
+      "require", "constructor", "function", "console", "log", "error", "warn", "info"
+    ]);
+    const ignoredReturnTypes = new Set([
+      "raise", "throw", "return", "yield", "new", "typeof", "sizeof", "delete",
+      "import", "export", "const", "let", "var", "case", "default"
+    ]);
 
-    const ignoredNames = ["if", "while", "for", "switch", "catch", "using", "lock", "foreach"];
-    if (!ignoredNames.includes(methodName) && methodName.length > 2 && returnType !== "new") {
+    while ((match = methodRegex.exec(code)) !== null) {
+      const typePre = match[1];
+      const methodName = match[2];
+      const params = match[3];
+      const typePost = match[4];
+
+      if (ignoredNames.has(methodName) || methodName.length <= 2) continue;
+      if (typePre && ignoredReturnTypes.has(typePre.toLowerCase())) continue;
+      if (methodName.endsWith("Exception") || methodName.endsWith("Error")) continue;
+
+      const sig = (
+        typePost
+          ? `${methodName}(${params}): ${typePost.trim()}`
+          : `${typePre ? typePre + " " : ""}${methodName}(${params})`
+      ).trim();
+
       const startIndex = match.index;
       const snippet = code.substring(startIndex, startIndex + 400);
       entities.push({
         name: methodName,
         kind: "method",
-        signature: `${returnType} ${methodName}(${params})`,
+        signature: sig,
         logicSnippet: snippet,
         contextLines: snippet.split(/\r?\n/).slice(0, 5),
       });
     }
-  }
-
-  // 3. Python fonksiyonları: def method_name(...)
-  const pyFuncRegex = /def\s+([A-Za-z0-9_]+)\s*\(([^)]*)\):/g;
-  while ((match = pyFuncRegex.exec(code)) !== null) {
-    const funcName = match[1];
-    const params = match[2];
-    entities.push({
-      name: funcName,
-      kind: "function",
-      signature: `def ${funcName}(${params})`,
-      contextLines: [],
-    });
   }
 
   return entities;

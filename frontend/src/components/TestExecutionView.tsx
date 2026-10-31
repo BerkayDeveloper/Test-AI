@@ -16,6 +16,7 @@ import {
   Divider,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
+import { cleanTitle } from "../utils/titleCleaner";
 
 interface TestExecutionViewProps {
   plan: TestPlanResult;
@@ -120,6 +121,12 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
     return (execState[tc.id]?.status || "pending") === filter;
   });
 
+  const formatPriority = (priority: string = "") => {
+    const match = priority.match(/\((.*?)\)/);
+    if (match && match[1]) return match[1].trim();
+    return priority.replace(/^P\d+\s*-?\s*/i, "").trim() || priority;
+  };
+
   // Test Raporu Üret ve İndir
   const handleExportExecutionReport = () => {
     let report = `# Test Koşum Raporu: ${plan.title}\n\n`;
@@ -142,8 +149,8 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
           ? "🟡 ENGELLENDİ"
           : "⚪ BEKLİYOR";
 
-      report += `### ${idx + 1}. [${tc.id}] ${tc.title} — ${statusIcon}\n`;
-      report += `- **Öncelik:** ${tc.priority} | **Tür:** ${tc.type}\n`;
+      report += `### ${idx + 1}. [${tc.id}] ${cleanTitle(tc.title)} — ${statusIcon}\n`;
+      report += `- **Öncelik:** ${formatPriority(tc.priority)} | **Tür:** ${tc.type}\n`;
       report += `- **Tamamlanan Adım Sayısı:** ${state.completedSteps?.length || 0} / ${tc.steps.length}\n`;
       if (state.notes) report += `- **Test Notu / Hata:** ${state.notes}\n`;
       if (state.executedAt) report += `- **Koşulma Saati:** ${state.executedAt}\n`;
@@ -362,13 +369,13 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                     sx={{ fontWeight: 800, backgroundColor: "rgba(99, 102, 241, 0.2)", color: "#818cf8" }}
                   />
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#f8fafc" }}>
-                    {tc.title}
+                    {cleanTitle(tc.title)}
                   </Typography>
                 </Stack>
 
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Chip
-                    label={tc.priority}
+                    label={formatPriority(tc.priority)}
                     size="small"
                     sx={{
                       fontSize: "0.72rem",

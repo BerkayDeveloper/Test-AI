@@ -30,8 +30,11 @@ export const api = {
     return res.json();
   },
 
-  async fetchAnalyses(): Promise<AnalysisHistoryItem[]> {
-    const res = await fetch(`${API_BASE_URL}/api/analyses`);
+  async fetchAnalyses(persona?: "qa" | "developer"): Promise<AnalysisHistoryItem[]> {
+    const url = persona
+      ? `${API_BASE_URL}/api/analyses?persona=${persona}`
+      : `${API_BASE_URL}/api/analyses`;
+    const res = await fetch(url);
     if (!res.ok) throw new Error("Analiz geçmişi getirilemedi.");
     return res.json();
   },

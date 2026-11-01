@@ -30,6 +30,7 @@ export const dbService = {
     riskScore: number;
     impactAreas: string;
     recommendations: string;
+    persona?: "qa" | "developer";
   }): Promise<AnalysisRecord> {
     const record: AnalysisRecord = {
       id: data.id,
@@ -43,6 +44,7 @@ export const dbService = {
       impactAreas: data.impactAreas,
       recommendations: data.recommendations,
       createdAt: new Date(),
+      persona: data.persona,
     };
 
     if (isPrismaAvailable) {

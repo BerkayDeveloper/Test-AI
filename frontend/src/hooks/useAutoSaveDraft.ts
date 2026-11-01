@@ -6,11 +6,13 @@ export interface DraftData {
   previousContent: string;
   newContent: string;
   savedAt?: string;
+  persona?: "qa" | "developer";
 }
 
-const DRAFT_STORAGE_KEY = "active_draft_change_analysis_v1";
+const getStorageKey = (persona: "qa" | "developer") => `active_draft_change_analysis_${persona}_v2`;
 
 interface UseAutoSaveDraftOptions {
+  persona?: "qa" | "developer";
   onManualSave?: (timestamp: string) => void;
   onAutoSave?: (timestamp: string) => void;
   onOffline?: () => void;
@@ -21,6 +23,7 @@ export function useAutoSaveDraft(
   currentData: DraftData,
   options?: UseAutoSaveDraftOptions
 ) {
+  const persona = options?.persona || "qa";
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -29,8 +32,12 @@ export function useAutoSaveDraft(
   const dataRef = useRef<DraftData>(currentData);
   dataRef.current = currentData;
 
+  const currentPersonaRef = useRef<"qa" | "developer">(persona);
+  currentPersonaRef.current = persona;
+
   const saveToStorage = useCallback(
     (data: DraftData, isManual = false) => {
+      const currentPersona = currentPersonaRef.current;
       const hasContent =
         Boolean(data.title?.trim()) ||
         Boolean(data.previousContent?.trim()) ||
@@ -52,10 +59,11 @@ export function useAutoSaveDraft(
         previousContent: data.previousContent || "",
         newContent: data.newContent || "",
         savedAt: timestamp,
+        persona: currentPersona,
       };
 
       try {
-        localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(payload));
+        localStorage.setItem(getStorageKey(currentPersona), JSON.stringify(payload));
         setLastSaved(timestamp);
         // Manuel kaydetmede veya otomatik kaydetmede taslağı temizle butonu görünür olsun
         setDraftRestored(true);
@@ -73,9 +81,10 @@ export function useAutoSaveDraft(
     [options]
   );
 
-  const clearDraft = useCallback(() => {
+  const clearDraft = useCallback((targetPersona?: "qa" | "developer") => {
     try {
-      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      const p = targetPersona || currentPersonaRef.current;
+      localStorage.removeItem(getStorageKey(p));
       setLastSaved(null);
       setDraftRestored(false);
     } catch (err) {
@@ -84,9 +93,10 @@ export function useAutoSaveDraft(
   }, []);
 
   // 1. Initial Load: Check for saved draft on mount
-  const getInitialDraft = useCallback((): DraftData | null => {
+  const getInitialDraft = useCallback((targetPersona?: "qa" | "developer"): DraftData | null => {
     try {
-      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      const p = targetPersona || currentPersonaRef.current;
+      const raw = localStorage.getItem(getStorageKey(p));
       if (!raw) return null;
       const parsed: DraftData = JSON.parse(raw);
       const hasContent =

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -621,19 +621,104 @@ interface AddTemplateModalProps {
   open: boolean;
   onClose: () => void;
   onSaveTemplate: (tpl: TemplateItem) => void;
+  activePersona?: "qa" | "developer";
 }
+
+const QA_CATEGORY_SAMPLES: Record<
+  string,
+  Array<{ name: string; title: string; oldCode: string; newCode: string }>
+> = {
+  ui_ux: [
+    {
+      name: "🎨 UI Donması ve Çift Tıklama Engeli",
+      title: "Giriş Butonuna Çift Tıklama ve Sonsuz Spinner Hatası",
+      oldCode: "",
+      newCode: `[Kullanıcı Arayüzü Regresyon Senaryosu]
+1. Kullanıcı şifre sıfırlama veya ödeme formunda onay butonuna hızlıca iki defa tıklar.
+2. Arayüzde buton loading animasyonuna geçmez ve donar.
+3. Beklenen Davranış: İlk tıklamadan sonra buton derhal disable edilmeli ve mükerrer istek gönderilmemelidir.`,
+    },
+    {
+      name: "🖼️ Responsive Ekran ve Mobil Taşırma",
+      title: "Mobil Ekranda Butonların ve Form Alanlarının Ekrana Sığması",
+      oldCode: "",
+      newCode: `[Mobil Ekran Görsel Doğrulama]
+1. Uygulama farklı çözünürlüklerde (360x640, 390x844, 412x915) açılır.
+2. Form alanlarında yatay kaydırma çubuğu (horizontal scroll) çıkmadığı ve metinlerin buton dışına taşmadığı teyit edilir.`,
+    },
+  ],
+  functional: [
+    {
+      name: "🛒 Sepet İndirimi ve Kupon Uygulama",
+      title: "Kupon Uygulama ve Minimum Tutar Altı İptal Denetimi",
+      oldCode: "",
+      newCode: `[Uçtan Uca Kabul Testi]
+1. Sepete 300 TL tutarında ürün eklenir ve 'INDIRIM20' kuponu uygulanır.
+2. Sepetten bir ürün silinerek sepet 200 TL'ye düşürülür.
+3. Kuponun otomatik iptal edildiği ve toplam tutarın güncellendiği doğrulanır.`,
+    },
+  ],
+  gameplay: [
+    {
+      name: "🎮 Oyun Hasar Barı ve Checkpoint Doğrulaması",
+      title: "Karakter Can Azalması ve En Son Checkpoint'te Yeniden Doğma",
+      oldCode: "",
+      newCode: `[Oyun Deneyimi Testi]
+1. Karakter düşman hasarı aldığında can barı anlık düşmeli ve kırmızı hasar efekti çıkmalıdır.
+2. Can 0 olduğunda hareket kontrolleri kilitlenmeli, 3 saniye sonra son Checkpoint'te tam canla yeniden doğmalıdır.`,
+    },
+  ],
+  security_qa: [
+    {
+      name: "🔒 2FA Hatalı Kod ve Kilitlenme Kontrolü",
+      title: "OTP SMS Kodu 3 Hatalı Girişte 15 Dk Hesap Askıya Alma",
+      oldCode: "",
+      newCode: `[Güvenlik ve Negatif Test Senaryosu]
+1. SMS ile gelen 6 haneli doğrulama koduna 3 defa geçersiz kod yazılır.
+2. Sistem hesabın 15 dakika bloke edildiğini ve geri sayım sayacını ekranda göstermelidir.
+3. Tarayıcı yenilendiğinde sürenin sıfırlanmadığı doğrulanmalıdır.`,
+    },
+  ],
+};
+
+const QA_AI_PROMPTS = [
+  {
+    category: "🎨 UI/UX Regresyon",
+    topic: "Buton Çift Tıklama",
+    prompt: "Ödeme sayfasında onay butonuna arka arkaya çift tıklandığında ekranın donması ve mükerrer sipariş oluşması hatasını inceleyen QA test şablonu oluştur.",
+  },
+  {
+    category: "🛒 E2E Kullanıcı Akışı",
+    topic: "Sepet ve Kupon",
+    prompt: "E-ticaret sepetinde kupon uygulama, minimum sepet tutarı validasyonu ve geçersiz kupon hata bildirimi QA senaryosu hazırla.",
+  },
+  {
+    category: "🎮 Oyun Deneyimi",
+    topic: "Can Barı & Respawn",
+    prompt: "Unity oyununda karakterin hasar alması, can barı animasyonu ve öldükten sonra checkpoint'te yeniden doğması için QA kabul kriterleri hazırla.",
+  },
+  {
+    category: "🔒 Güvenlik & Negatif Test",
+    topic: "2FA Hatalı Kod",
+    prompt: "Giriş doğrulama ekranında arka arkaya hatalı SMS kodu girildiğinde hesabın geçici kilitlenmesi ve brute-force engelleme QA test planı yaz.",
+  },
+];
 
 export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
   open,
   onClose,
   onSaveTemplate,
+  activePersona = "qa",
 }) => {
+  const isQa = activePersona === "qa";
+  const defaultCategory = isQa ? "ui_ux" : "code";
+
   const [modalTab, setModalTab] = useState(0);
   const [promptInput, setPromptInput] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
 
   const [modalName, setModalName] = useState("");
-  const [modalCategory, setModalCategory] = useState("code");
+  const [modalCategory, setModalCategory] = useState(defaultCategory);
   const [modalTitle, setModalTitle] = useState("");
   const [modalOldCode, setModalOldCode] = useState("");
   const [modalNewCode, setModalNewCode] = useState("");
@@ -643,9 +728,14 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
   // AI promptları için sıradaki indeks
   const [promptSampleIndex, setPromptSampleIndex] = useState(0);
 
+  // Aktif persona değiştiğinde modalCategory'yi ilgili modun varsayılanına güncelle
+  useEffect(() => {
+    setModalCategory(isQa ? "ui_ux" : "code");
+  }, [isQa]);
+
   const resetForm = () => {
     setModalName("");
-    setModalCategory("code");
+    setModalCategory(isQa ? "ui_ux" : "code");
     setModalTitle("");
     setModalOldCode("");
     setModalNewCode("");
@@ -658,18 +748,21 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
     onClose();
   };
 
+  const currentPrompts = isQa ? QA_AI_PROMPTS : AI_SAMPLE_PROMPTS;
+
   const handleLoadSamplePrompt = (customPrompt?: string) => {
     if (customPrompt) {
       setPromptInput(customPrompt);
       return;
     }
-    const current = AI_SAMPLE_PROMPTS[promptSampleIndex % AI_SAMPLE_PROMPTS.length];
+    const current = currentPrompts[promptSampleIndex % currentPrompts.length];
     setPromptInput(current.prompt);
-    setPromptSampleIndex((prev) => (prev + 1) % AI_SAMPLE_PROMPTS.length);
+    setPromptSampleIndex((prev) => (prev + 1) % currentPrompts.length);
   };
 
   const handleLoadSampleGuide = () => {
-    const list = CATEGORY_SAMPLES[modalCategory] || CATEGORY_SAMPLES.code;
+    const samplesMap = isQa ? QA_CATEGORY_SAMPLES : CATEGORY_SAMPLES;
+    const list = samplesMap[modalCategory] || (isQa ? QA_CATEGORY_SAMPLES.ui_ux : CATEGORY_SAMPLES.code);
     const currentIndex = sampleIndices[modalCategory] || 0;
     const sample = list[currentIndex % list.length];
 
@@ -709,7 +802,7 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
 
   const handleSave = () => {
     if (!modalName.trim() || !modalNewCode.trim()) {
-      alert("Lütfen en azından bir Şablon Adı ve Yeni Kod alanını doldurun.");
+      alert(isQa ? "Lütfen en azından bir Şablon Adı ve Senaryo/Kabul Kriteri alanını doldurun." : "Lütfen en azından bir Şablon Adı ve Yeni Kod alanını doldurun.");
       return;
     }
 
@@ -720,13 +813,15 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
       oldCode: modalOldCode,
       newCode: modalNewCode,
       isCustom: true,
+      persona: activePersona,
     });
     // Formdaki tüm yazıları temizle
     resetForm();
     onClose();
   };
 
-  const currentCategorySamples = CATEGORY_SAMPLES[modalCategory] || CATEGORY_SAMPLES.code;
+  const samplesMap = isQa ? QA_CATEGORY_SAMPLES : CATEGORY_SAMPLES;
+  const currentCategorySamples = samplesMap[modalCategory] || (isQa ? QA_CATEGORY_SAMPLES.ui_ux : CATEGORY_SAMPLES.code);
   const currentIdx = (sampleIndices[modalCategory] || 0) % currentCategorySamples.length;
 
   return (
@@ -824,7 +919,7 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
                   fullWidth
                   size="small"
                   label="Şablon Buton Adı"
-                  placeholder="Örn: 🛒 Sepet İndirim Kuponu"
+                  placeholder={isQa ? "Örn: 🛒 Sepet & Kupon Doğrulama" : "Örn: 🛒 Sepet İndirim Kuponu"}
                   value={modalName}
                   onChange={(e) => setModalName(e.target.value)}
                 />
@@ -834,17 +929,35 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
                   select
                   fullWidth
                   size="small"
-                  label="Kategori"
-                  value={modalCategory}
+                  label={isQa ? "Test Türü" : "Kategori"}
+                  value={
+                    isQa
+                      ? ["ui_ux", "functional", "gameplay", "security_qa", "mobile_app"].includes(modalCategory)
+                        ? modalCategory
+                        : "ui_ux"
+                      : ["none", "game", "mobile", "code", "api", "database", "security"].includes(modalCategory)
+                      ? modalCategory
+                      : "code"
+                  }
                   onChange={(e) => setModalCategory(e.target.value)}
                 >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="game">🎮 Oyun Geliştirme (Unity/C#)</MenuItem>
-                  <MenuItem value="mobile">📱 Mobil Uygulama</MenuItem>
-                  <MenuItem value="code">💻 Genel Kaynak Kod</MenuItem>
-                  <MenuItem value="api">🌐 API & Web Servisi</MenuItem>
-                  <MenuItem value="database">🗄️ Veritabanı / SQL</MenuItem>
-                  <MenuItem value="security">🔒 Güvenlik & Yetkilendirme</MenuItem>
+                  {isQa
+                    ? [
+                        <MenuItem key="ui_ux" value="ui_ux">🎨 UI/UX Regresyon</MenuItem>,
+                        <MenuItem key="functional" value="functional">⚙️ Fonksiyonel / E2E</MenuItem>,
+                        <MenuItem key="gameplay" value="gameplay">🎮 Oyun Mekaniği</MenuItem>,
+                        <MenuItem key="security_qa" value="security_qa">🔒 Güvenlik & 2FA</MenuItem>,
+                        <MenuItem key="mobile_app" value="mobile_app">📱 Mobil Deneyim</MenuItem>,
+                      ]
+                    : [
+                        <MenuItem key="none" value="none">None</MenuItem>,
+                        <MenuItem key="game" value="game">🎮 Oyun Geliştirme (Unity/C#)</MenuItem>,
+                        <MenuItem key="mobile" value="mobile">📱 Mobil Uygulama</MenuItem>,
+                        <MenuItem key="code" value="code">💻 Genel Kaynak Kod</MenuItem>,
+                        <MenuItem key="api" value="api">🌐 API & Web Servisi</MenuItem>,
+                        <MenuItem key="database" value="database">🗄️ Veritabanı / SQL</MenuItem>,
+                        <MenuItem key="security" value="security">🔒 Güvenlik & Yetkilendirme</MenuItem>,
+                      ]}
                 </TextField>
               </Grid>
             </Grid>
@@ -853,44 +966,48 @@ export const AddTemplateModal: React.FC<AddTemplateModalProps> = ({
               fullWidth
               size="small"
               label="Görev / Senaryo Başlığı"
-              placeholder="Örn: Kullanıcı İndirim Kuponu ve Minimum Tutar Doğrulama"
+              placeholder={isQa ? "Örn: Sepet Tutarı Düşünce Kuponun Otomatik İptali ve Uyarı Bildirimi" : "Örn: Kullanıcı İndirim Kuponu ve Minimum Tutar Doğrulama"}
               value={modalTitle}
               onChange={(e) => setModalTitle(e.target.value)}
             />
 
-            <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600 }}>
-              1. Önceki Durum (Orijinal Kod) — (İsteğe bağlı, boş bırakılabilir):
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              placeholder="Mevcut eski kod bloğu (varsa)..."
-              value={modalOldCode}
-              onChange={(e) => setModalOldCode(e.target.value)}
-              sx={{
-                "& .MuiInputBase-root": {
-                  fontFamily: "monospace",
-                  fontSize: "0.82rem",
-                  backgroundColor: "rgba(0,0,0,0.3)",
-                },
-              }}
-            />
+            {!isQa && (
+              <>
+                <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600 }}>
+                  1. Önceki Durum (Orijinal Kod) — (İsteğe bağlı, boş bırakılabilir):
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={4}
+                  placeholder="Mevcut eski kod bloğu (varsa)..."
+                  value={modalOldCode}
+                  onChange={(e) => setModalOldCode(e.target.value)}
+                  sx={{
+                    "& .MuiInputBase-root": {
+                      fontFamily: "monospace",
+                      fontSize: "0.82rem",
+                      backgroundColor: "rgba(0,0,0,0.3)",
+                    },
+                  }}
+                />
+              </>
+            )}
 
-            <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 600 }}>
-              2. Yeni Durum (Değiştirilen / Eklenen Kod):
+            <Typography variant="caption" sx={{ color: isQa ? "#38bdf8" : "#34d399", fontWeight: 600 }}>
+              {isQa ? "Senaryo / Kabul Kriterleri & Test Notları:" : "2. Yeni Durum (Değiştirilen / Eklenen Kod):"}
             </Typography>
             <TextField
               fullWidth
               multiline
-              rows={6}
-              placeholder="Test edilecek yeni veya değiştirilmiş kod bloğu..."
+              rows={isQa ? 8 : 6}
+              placeholder={isQa ? "Test adımlarını, kullanıcı davranışını veya hata senaryolarını girin..." : "Test edilecek yeni veya değiştirilmiş kod bloğu..."}
               value={modalNewCode}
               onChange={(e) => setModalNewCode(e.target.value)}
               sx={{
                 "& .MuiInputBase-root": {
-                  fontFamily: "monospace",
-                  fontSize: "0.82rem",
+                  fontFamily: isQa ? "inherit" : "monospace",
+                  fontSize: isQa ? "0.86rem" : "0.82rem",
                   backgroundColor: "rgba(0,0,0,0.3)",
                 },
               }}

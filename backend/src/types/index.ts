@@ -30,6 +30,7 @@ export interface TestPlanResult {
   createdAt: string;
   previousContent?: string;
   newContent?: string;
+  persona?: "qa" | "developer";
 }
 
 export interface TemplateItem {
@@ -53,4 +54,5 @@ export interface AnalysisRecord {
   impactAreas: string; // JSON string
   recommendations: string; // JSON string
   createdAt: Date;
+  persona?: "qa" | "developer";
 }

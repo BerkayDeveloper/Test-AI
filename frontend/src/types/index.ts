@@ -22,6 +22,7 @@ export interface TestPlanResult {
   previousContent?: string;
   newContent?: string;
   detectedLanguage?: string;
+  persona?: "qa" | "developer";
 }
 
 export interface TemplateItem {
@@ -31,6 +32,7 @@ export interface TemplateItem {
   oldCode: string;
   newCode: string;
   isCustom?: boolean;
+  persona?: "qa" | "developer";
 }
 
 export interface AnalysisHistoryItem {
@@ -46,4 +48,5 @@ export interface AnalysisHistoryItem {
   testCases: TestCase[];
   impactAreas: string[];
   totalTestCount: number;
+  persona?: "qa" | "developer";
 }

@@ -55,11 +55,12 @@ const darkTheme = createTheme({
   },
 });
 
-const DEFAULT_TEMPLATES: TemplateItem[] = [
+const DEFAULT_DEVELOPER_TEMPLATES: TemplateItem[] = [
   {
     name: "🌐 API Breaking Change (Metot/Fonksiyon Silinmesi)",
     category: "api",
     title: "Ödeme ve Bakiye API Sözleşmesi Değişikliği",
+    persona: "developer",
     oldCode: `export function processPayment(userId: string, amount: number) {
   return db.payments.create({ data: { userId, amount } });
 }
@@ -76,6 +77,7 @@ export function processPayment(userId: string, amount: number, options: { curren
     name: "🎮 Unity C# Oyun Mekanikleri (Can, Envanter, Duraklatma)",
     category: "game",
     title: "Unity Karakter ve Oyun Mekanikleri Paketi",
+    persona: "developer",
     oldCode: "",
     newCode: `using System.Collections.Generic;
 using UnityEngine;
@@ -118,6 +120,7 @@ public class PauseManager : MonoBehaviour {
     name: "🔒 Güvenlik & Token Doğrulama Değişikliği",
     category: "security",
     title: "JWT Kimlik Doğrulama Katmanı Güncellemesi",
+    persona: "developer",
     oldCode: `const sessionSecret = "hardcoded_key_123";
 function verifyToken(token: string) {
   return jwt.verify(token, sessionSecret);
@@ -132,6 +135,7 @@ function verifyToken(token: string) {
     name: "🌐 Sıfırdan Yeni Özellik Ekleme (Önceki Kod Boş)",
     category: "api",
     title: "Yeni İki Adımlı Doğrulama (2FA) Servisi",
+    persona: "developer",
     oldCode: "",
     newCode: `export async function setupTwoFactorAuth(userId: string) {
   const secret = generateTotpSecret();
@@ -144,6 +148,55 @@ export async function verifyTotpToken(userId: string, code: string) {
   if (!user) throw new Error("2FA tanimli degil");
   return speakeasy.totp.verify({ secret: user.secret, token: code });
 }`,
+  },
+];
+
+const DEFAULT_QA_TEMPLATES: TemplateItem[] = [
+  {
+    name: "📱 Mobil/Web UI Hata & Çökme İncelemesi",
+    category: "mobile_ui",
+    title: "Mobil Giriş Ekranında Form Gönderim Hatası ve UI Donması",
+    persona: "qa",
+    oldCode: "",
+    newCode: `[QA Hata Senaryosu ve Kullanıcı Davranışı]
+1. Kullanıcı oturum açma ekranında telefon numarası ve şifresini girip 'Giriş Yap' butonuna arka arkaya çift tıklar.
+2. Arayüzde hiçbir yükleniyor (spinner) animasyonu çıkmaz ve ekran 3 saniye yanıt vermez.
+3. Arka planda mükerrer istek gittiği için sunucu 429 Rate Limit hatası döner ancak ekranda genel sistem hatası toast'ı görüntülenir.
+4. Beklenen: İlk tıklamada buton disable olmalı, çift tıklama engellenmeli ve net hata mesajı gösterilmelidir.`,
+  },
+  {
+    name: "🎮 Oyun HUD, Can & Respawn Kullanıcı Akışı",
+    category: "gameplay",
+    title: "Oyun Can Azalması, Hasar Efekti ve Checkpoint Doğrulaması",
+    persona: "qa",
+    oldCode: "",
+    newCode: `[QA Oyun Testi ve UX Akışı]
+1. Karakter düşman ateşi veya tuzakla karşılaştığında can barı (HUD) anlık olarak azalmalı ve kırmızı flaş hasar efekti çıkmalıdır.
+2. Can 0 olduğunda 'Game Over' ekranı gelmeli ve karakter hareket kontrolleri kilitlenmelidir.
+3. 3 saniye sonra 'Yeniden Başla' butonu aktif olmalı ve son Checkpoint noktasında 100% canla doğmalıdır.
+4. Test: Ölüm anında oyunu duraklatıp (Esc) tekrar devam ettirildiğinde karakterin donup donmadığı doğrulanmalıdır.`,
+  },
+  {
+    name: "💳 E-Ticaret Sepet, Ödeme & Kupon Kabul Testi",
+    category: "e2e_flow",
+    title: "Kupon Uygulama, Sepet İndirimi ve 3D Secure Akışı",
+    persona: "qa",
+    oldCode: "",
+    newCode: `[QA E2E Uçtan Uca Kabul Kriterleri]
+1. Sepette 250 TL ve üzeri ürün varken 'INDIRIM20' kuponu girildiğinde alt toplamda %20 indirim yansımalıdır.
+2. Sepetten bir ürün silinip tutar 250 TL altına düştüğünde kupon otomatik iptal edilmeli ve kullanıcıya bilgi verilmelidir.
+3. Ödeme butonuna tıklandığında banka 3D Secure modalı açılmalı ve SMS şifresi girildikten sonra sipariş onay ekranına yönlendirilmelidir.`,
+  },
+  {
+    name: "🔒 2FA Güvenlik, Hatalı Deneme & Kilitlenme Testi",
+    category: "security_qa",
+    title: "OTP SMS Doğrulama, Zaman Aşımı ve Hesap Güvenliği",
+    persona: "qa",
+    oldCode: "",
+    newCode: `[QA Güvenlik ve Negatif Test Akışı]
+1. SMS ile gelen 6 haneli kod için 3 dakikalık geri sayım sayacı doğru işlemelidir.
+2. 3 defa hatalı kod girildiğinde hesap 15 dakika kilitlenmeli ve ekranda kalan süre geri sayım olarak verilmelidir.
+3. Tarayıcıda 'Geri' butonuna tıklandığında yetkisiz panel açılmamalı ve oturum sonlandırılmalıdır.`,
   },
 ];
 
@@ -169,7 +222,12 @@ export default function App() {
     }
   });
 
-  const allTemplates = [...DEFAULT_TEMPLATES, ...customTemplates];
+  // Aktif modun varsayılan ve özel şablonları
+  const currentDefaultTemplates = isQa ? DEFAULT_QA_TEMPLATES : DEFAULT_DEVELOPER_TEMPLATES;
+  const currentCustomTemplates = customTemplates.filter(
+    (t) => (t.persona || "developer") === activePersona
+  );
+  const allTemplates = [...currentDefaultTemplates, ...currentCustomTemplates];
 
   // Form State
   const [title, setTitle] = useState("");
@@ -177,7 +235,7 @@ export default function App() {
   const [previousContent, setPreviousContent] = useState("");
   const [newContent, setNewContent] = useState("");
 
-  // Taslak ve Otomatik Veri Koruma Hook'u
+  // Taslak ve Otomatik Veri Koruma Hook'u (Aktif Persona/Moda Özel İzolasyon)
   const {
     isOffline,
     lastSaved,
@@ -187,10 +245,11 @@ export default function App() {
     clearDraft,
     getInitialDraft,
   } = useAutoSaveDraft(
-    { title, category, previousContent, newContent },
+    { title, category, previousContent, newContent, persona: activePersona },
     {
+      persona: activePersona,
       onManualSave: (timestamp) => {
-        setSnackbarMsg(`💾 Değişiklikler taslak olarak kaydedildi (${timestamp}) - Ctrl+S`);
+        setSnackbarMsg(`💾 ${isQa ? "QA" : "Developer"} verileri kaydedildi (${timestamp}) - Ctrl+S`);
       },
       onOffline: () => {
         setSnackbarMsg("⚠️ İnternet bağlantınız koptu! Yazdığınız veriler yerel hafızada koruma altına alındı.");
@@ -201,16 +260,18 @@ export default function App() {
     }
   );
 
-  // Kaza eseri kapanma veya sayfa yenilenmesi sonrası taslağı geri yükleme
+  // Kaza eseri kapanma veya sayfa yenilenmesi sonrası o moda ait taslağı geri yükleme
   useEffect(() => {
-    const savedDraft = getInitialDraft();
+    const savedDraft = getInitialDraft(activePersona);
     if (savedDraft) {
       if (savedDraft.title) setTitle(savedDraft.title);
       if (savedDraft.category) setCategory(savedDraft.category);
       if (savedDraft.previousContent) setPreviousContent(savedDraft.previousContent);
       if (savedDraft.newContent) setNewContent(savedDraft.newContent);
       setDraftRestored(true);
-      setSnackbarMsg(`💾 Önceki oturumdan taslağınız geri yüklendi (${savedDraft.savedAt || "Kayıtlı"}).`);
+      setSnackbarMsg(`💾 Önceki oturumdan ${activePersona === "qa" ? "QA" : "Developer"} taslağınız geri yüklendi (${savedDraft.savedAt || "Kayıtlı"}).`);
+    } else {
+      setDraftRestored(false);
     }
   }, []);
 
@@ -253,8 +314,8 @@ export default function App() {
     try {
       const data = await api.fetchAnalyses();
       setHistory(data);
-    } catch (err: any) {
-      console.warn("Geçmiş getirilemedi:", err.message);
+    } catch {
+      // Backend henüz ayakta değilse veya bağlantı kurulurken sessizce geç
     } finally {
       setHistoryLoading(false);
     }
@@ -297,18 +358,26 @@ export default function App() {
   };
 
   const handleSaveCustomTemplate = (newTpl: TemplateItem) => {
-    const updated = [...customTemplates, newTpl];
+    const tplWithPersona: TemplateItem = {
+      ...newTpl,
+      persona: activePersona,
+    };
+    const updated = [...customTemplates, tplWithPersona];
     setCustomTemplates(updated);
     try {
       localStorage.setItem("user_custom_templates_v2", JSON.stringify(updated));
     } catch {}
-    handleSelectTemplate(newTpl);
-    setSnackbarMsg("Yeni şablon başarıyla kaydedildi.");
+    handleSelectTemplate(tplWithPersona);
+    setSnackbarMsg(`Yeni ${isQa ? "QA" : "Developer"} şablonu başarıyla kaydedildi.`);
   };
 
   const handleDeleteCustomTemplate = (customIndex: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    const updated = customTemplates.filter((_, i) => i !== customIndex);
+    // Silinmek istenen şablonu aktif persona listesinden eşleştirerek genel listeden çıkar
+    const targetCustomTpl = currentCustomTemplates[customIndex];
+    if (!targetCustomTpl) return;
+
+    const updated = customTemplates.filter((t) => t !== targetCustomTpl);
     setCustomTemplates(updated);
     try {
       localStorage.setItem("user_custom_templates_v2", JSON.stringify(updated));
@@ -355,20 +424,98 @@ export default function App() {
     }
   };
 
+  // Mod Değiştiğinde Persona Senkronizasyonu & İzolasyonu
+  const handlePersonaChange = (newPersona: "qa" | "developer") => {
+    setActivePersona(newPersona);
+    setCategory("none"); // Mod değiştiğinde türü varsayılan olarak none yap
+
+    // Diğer modun taslağını geri yükle veya formu temizle (diğer moda verilerin karışmasını engelle)
+    const otherDraft = getInitialDraft(newPersona);
+    if (otherDraft) {
+      setTitle(otherDraft.title || "");
+      setCategory(otherDraft.category || "none");
+      setPreviousContent(otherDraft.previousContent || "");
+      setNewContent(otherDraft.newContent || "");
+      setDraftRestored(true);
+    } else {
+      setTitle("");
+      setCategory("none");
+      setPreviousContent("");
+      setNewContent("");
+      setDraftRestored(false);
+    }
+
+    // Eğer o an açık bir sayfa veya üretilen plan varsa ve diğer moda aitse,
+    // diğer modun verisine müdahale edilmesini engellemek için ana ekrana dön ve sıfırla
+    if (activePlan) {
+      const planPersona =
+        activePlan.persona ||
+        (activePlan.overview?.includes("[QA") || activePlan.overview?.includes("Tester")
+          ? "qa"
+          : "developer");
+      if (planPersona !== newPersona) {
+        setActivePlan(null);
+        setCurrentView("main");
+      }
+    }
+
+    if (testPlan) {
+      const testPlanPersona =
+        testPlan.persona ||
+        (testPlan.overview?.includes("[QA") || testPlan.overview?.includes("Tester")
+          ? "qa"
+          : "developer");
+      if (testPlanPersona !== newPersona) {
+        setTestPlan(null);
+      }
+    }
+  };
+
+  // Aktif moda göre filtrelenmiş geçmiş plan sayısı
+  const filteredHistoryCount = history.filter((item) => {
+    const itemPersona =
+      item.persona ||
+      (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
+        ? "qa"
+        : "developer");
+    return itemPersona === activePersona;
+  }).length;
+
   // 1. İncele Sayfasına Geçiş
   const handleInspectPlan = (plan: TestPlanResult) => {
+    const planPersona =
+      plan.persona ||
+      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    if (planPersona !== activePersona) {
+      setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan müdahale edilemez.`);
+      return;
+    }
     setActivePlan(plan);
     setCurrentView("inspect");
   };
 
   // 2. Düzenle Sayfasına Geçiş
   const handleEditPlan = (plan: TestPlanResult) => {
+    const planPersona =
+      plan.persona ||
+      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    if (planPersona !== activePersona) {
+      setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan düzenlenemez.`);
+      return;
+    }
     setActivePlan(plan);
     setCurrentView("edit");
   };
 
   // 3. Test Etmeye Başla Sayfasına Geçiş
   const handleExecutePlan = (plan: TestPlanResult) => {
+    const planPersona =
+      plan.persona ||
+      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    if (planPersona !== activePersona) {
+      setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan test edilemez.`);
+      return;
+    }
     setActivePlan(plan);
     setCurrentView("execute");
   };
@@ -412,7 +559,7 @@ export default function App() {
           dbStatus={dbStatus}
           onRetry={checkHealth}
           activePersona={activePersona}
-          onPersonaChange={setActivePersona}
+          onPersonaChange={handlePersonaChange}
         />
 
         <Container maxWidth="xl" sx={{ mt: 4 }}>
@@ -469,7 +616,7 @@ export default function App() {
                 <Tabs value={tabIndex} onChange={(_, v) => setTabIndex(v)} textColor="primary" indicatorColor="primary">
                   <Tab label="📝 Yeni Değişiklik ve Test Oluşturucu" sx={{ textTransform: "none", fontWeight: 600 }} />
                   <Tab
-                    label={`🗂️ Üretilen Test Planları (${history.length})`}
+                    label={`🗂️ ${isQa ? "QA" : "Developer"} Test Planları (${filteredHistoryCount})`}
                     sx={{ textTransform: "none", fontWeight: 600 }}
                   />
                 </Tabs>
@@ -489,7 +636,7 @@ export default function App() {
                       newContent={newContent}
                       setNewContent={setNewContent}
                       templates={allTemplates}
-                      defaultTemplatesCount={DEFAULT_TEMPLATES.length}
+                      defaultTemplatesCount={currentDefaultTemplates.length}
                       onSelectTemplate={handleSelectTemplate}
                       onOpenModal={() => setOpenModal(true)}
                       onDeleteCustomTemplate={handleDeleteCustomTemplate}
@@ -523,6 +670,7 @@ export default function App() {
                   onExecutePlan={handleExecutePlan}
                   onDeletePlan={handleDeleteFromHistory}
                   loading={historyLoading}
+                  activePersona={activePersona}
                 />
               )}
             </>
@@ -534,6 +682,7 @@ export default function App() {
           open={openModal}
           onClose={() => setOpenModal(false)}
           onSaveTemplate={handleSaveCustomTemplate}
+          activePersona={activePersona}
         />
 
         {/* Bildirim Çubuğu */}

@@ -46,6 +46,7 @@ export const analysisController = {
         riskScore,
         impactAreas: JSON.stringify(testPlan.testCases.map((t) => t.title)),
         recommendations: JSON.stringify(testPlan.testCases),
+        persona: safePersona,
       });
 
       return res.json({
@@ -55,6 +56,7 @@ export const analysisController = {
         createdAt: saved.createdAt.toISOString(),
         previousContent: safeOldText,
         newContent: safeNewText,
+        persona: safePersona,
         ...testPlan,
       });
     } catch (error: any) {
@@ -64,7 +66,7 @@ export const analysisController = {
   },
 
   // GET /api/analyses
-  async getAnalyses(_req: Request, res: Response) {
+  async getAnalyses(req: Request, res: Response) {
     try {
       const records = await dbService.getAllAnalyses();
       const formatted = records.map((r) => {
@@ -80,6 +82,11 @@ export const analysisController = {
 
         const impactAreas = testCases.map((t) => t.title);
 
+        // Persona belirleme: Eğer kayıtta yoksa diffSummary veya overview içeriğindeki etiketten çıkar
+        const resolvedPersona: "qa" | "developer" =
+          r.persona ||
+          (r.diffSummary.includes("[QA") || r.diffSummary.includes("Tester") ? "qa" : "developer");
+
         return {
           id: r.id,
           title: r.title,
@@ -93,10 +100,17 @@ export const analysisController = {
           testCases,
           impactAreas,
           totalTestCount: testCases.length,
+          persona: resolvedPersona,
         };
       });
 
-      return res.json(formatted);
+      // İsteğe bağlı query filtresi: /api/analyses?persona=qa
+      const { persona } = req.query;
+      const result = persona && (persona === "qa" || persona === "developer")
+        ? formatted.filter((item) => item.persona === persona)
+        : formatted;
+
+      return res.json(result);
     } catch (error: any) {
       console.error("Analiz listeleme hatası:", error);
       return res.status(500).json({ error: "Analiz geçmişi getirilirken hata oluştu: " + error.message });
@@ -123,6 +137,10 @@ export const analysisController = {
         title: cleanTitle(tc.title),
       }));
 
+      const resolvedPersona: "qa" | "developer" =
+        record.persona ||
+        (record.diffSummary.includes("[QA") || record.diffSummary.includes("Tester") ? "qa" : "developer");
+
       return res.json({
         id: record.id,
         title: record.title,
@@ -135,6 +153,7 @@ export const analysisController = {
         createdAt: record.createdAt.toISOString(),
         testCases,
         totalTestCount: testCases.length,
+        persona: resolvedPersona,
       });
     } catch (error: any) {
       return res.status(500).json({ error: "Analiz detayı alınamadı: " + error.message });
@@ -200,6 +219,7 @@ export const analysisController = {
         createdAt: updated.createdAt.toISOString(),
         testCases: parsedCases,
         totalTestCount: parsedCases.length,
+        persona: updated.persona || (updated.diffSummary.includes("[QA") ? "qa" : "developer"),
       });
     } catch (error: any) {
       return res.status(500).json({ error: "Analiz güncellenemedi: " + error.message });

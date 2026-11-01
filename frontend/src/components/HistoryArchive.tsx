@@ -29,6 +29,7 @@ interface HistoryArchiveProps {
   onExecutePlan: (plan: TestPlanResult) => void;
   onDeletePlan: (id: string) => void;
   loading: boolean;
+  activePersona?: "qa" | "developer";
 }
 
 export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
@@ -38,6 +39,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
   onExecutePlan,
   onDeletePlan,
   loading,
+  activePersona,
 }) => {
   const [search, setSearch] = useState("");
   // Silme Onay Modalı State'i (Silinmek istenen planın id ve title'ı)
@@ -45,7 +47,19 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
 
   const safeHistory = Array.isArray(history) ? history : [];
 
-  const filteredHistory = safeHistory.filter((h) => {
+  // Mod İzolasyonu: Sadece aktif persona (QA ise QA testleri, Developer ise Dev testleri) listelenir
+  const modeFilteredHistory = activePersona
+    ? safeHistory.filter((item) => {
+        const itemPersona =
+          item.persona ||
+          (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
+            ? "qa"
+            : "developer");
+        return itemPersona === activePersona;
+      })
+    : safeHistory;
+
+  const filteredHistory = modeFilteredHistory.filter((h) => {
     const q = search.toLowerCase();
     const title = (h.title || "").toLowerCase();
     const cat = (h.category || "").toLowerCase();
@@ -67,6 +81,12 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
       ...tc,
       title: cleanTitle(tc.title),
     }));
+    const resolvedPersona =
+      item.persona ||
+      (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
+        ? "qa"
+        : "developer");
+
     return {
       id: item.id,
       title: item.title || "İsimsiz Test Planı",
@@ -80,6 +100,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
       createdAt: item.createdAt || new Date().toISOString(),
       previousContent: item.previousContent || "",
       newContent: item.newContent || "",
+      persona: resolvedPersona,
     };
   };
 
@@ -119,8 +140,10 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
 
         {filteredHistory.length === 0 ? (
           <Alert severity="info" sx={{ background: "rgba(14, 165, 233, 0.1)", color: "#7dd3fc" }}>
-            {safeHistory.length === 0
-              ? "Henüz kaydedilmiş bir test planı bulunmuyor. Yeni bir analiz başlattığınızda burada listelenecektir."
+            {modeFilteredHistory.length === 0
+              ? activePersona === "qa"
+                ? "Henüz QA modunda kaydedilmiş bir test planı bulunmuyor. Yeni bir QA analizi başlattığınızda burada listelenecektir."
+                : "Henüz Developer modunda kaydedilmiş bir test planı bulunmuyor. Yeni bir Developer analizi başlattığınızda burada listelenecektir."
               : "Arama kriterinize uygun test planı bulunamadı."}
           </Alert>
         ) : (

@@ -19,5 +19,5 @@ COPY tsconfig.json ./
 # Initial build
 RUN npm run build
 
-EXPOSE 4000
+EXPOSE 5001
 CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run dev"]

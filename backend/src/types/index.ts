@@ -2,12 +2,15 @@ export interface TestCase {
   id: string;
   title: string;
   type: string;
+  testType?: string;
+  description?: string;
   priority: string;
   preconditions: string;
   steps: string[];
   expectedResult: string;
   targetComponent?: string;
   automationSnippet?: string;
+  status?: string;
 }
 
 export interface CodeEntity {

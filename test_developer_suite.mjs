@@ -5,7 +5,7 @@ function sendAnalysisRequest(payload) {
     const postData = JSON.stringify(payload);
     const options = {
       hostname: "localhost",
-      port: 4000,
+      port: 5001,
       path: "/api/analyze",
       method: "POST",
       headers: {

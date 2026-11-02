@@ -1,87 +1,370 @@
 /**
- * Antigravity Test-AI: Frontend Test Başlığı Temizleme Motoru
- * Oluşturulmuş ve oluşturulacak test adım isimlerini gereksiz tanımlardan,
- * imzalardan, parantezli kodlardan, tırnak işaretlerinden ve dolgu kelimelerden arındırır.
+ * Antigravity Test-AI: Frontend Test Başlığı ve Adımları Temizleme Motoru
+ * Oluşturulmuş ve oluşturulacak test adımlarını ve başlıklarını gereksiz tanımlardan,
+ * köşeli parantezli meta etiketlerden ("[QA Hata Senaryosu ve Kullanıcı Davranışı]", "[Video 1]", vb.),
+ * parantez içi açıklamalardan (parantez içindeki anlam doğrudan cümleye yedirilir),
+ * video sürelerinden (adminde rozetle gösterilebilir, normal kullanıcıda gizlenir),
+ * robotik telemetri ifadelerinden ve tekrar eden adımlardan arındırır.
+ * Açık, herkes tarafından anlaşılabilir ve profesyonel test dili sağlar.
  */
+
+/**
+ * Köşeli parantezleri ve içindeki gereksiz meta verileri tamamen temizler
+ */
+export function removeSquareBrackets(text: string = ""): string {
+  if (!text) return "";
+  let s = text;
+
+  // Özel prefix dönüşümleri: [Video 1: dosya] veya [Görsel 1: dosya] -> Başlıklarda Video ve Fotoğraf kelimeleri istenmediği için tamamen temizlenir
+  s = s.replace(/\[\s*Video\s*(\d+)[\s:]*([^\]]*)\]/gi, (_match, _vNum, rest) => {
+    const cleanRest = rest ? rest.replace(/\.[^/.]+$/, "").trim() : "";
+    return cleanRest ? `${cleanRest}: ` : "";
+  });
+
+  // [Görsel 1: dosya] -> temizle
+  s = s.replace(/\[\s*Görsel\s*(\d+)[\s:]*([^\]]*)\]/gi, (_match, _gNum, rest) => {
+    const cleanRest = rest ? rest.replace(/\.[^/.]+$/, "").trim() : "";
+    return cleanRest ? `${cleanRest}: ` : "";
+  });
+
+  // [Fotoğraf 1: dosya] -> temizle
+  s = s.replace(/\[\s*Fotoğraf\s*(\d+)[\s:]*([^\]]*)\]/gi, (_match, _fNum, rest) => {
+    const cleanRest = rest ? rest.replace(/\.[^/.]+$/, "").trim() : "";
+    return cleanRest ? `${cleanRest}: ` : "";
+  });
+
+  // [Çoklu Video: ...] -> Modüller Arası Akış:
+  s = s.replace(/\[\s*Çoklu\s*Video[^\]]*\]/gi, "Modüller Arası Akış: ");
+
+  // Kalan tüm köşeli parantezleri kaldır
+  s = s.replace(/\[\s*[^\]]*\]/g, "");
+  s = s.replace(/[\[\]]/g, "");
+
+  return s;
+}
+
+/**
+ * Parantez içindeki () açıklamaları parantezden kurtarır ve anlamını doğrudan cümleye entegre eder.
+ * Kullanıcı kuralı: "() içerisinde yazan cümleler yerine direkt cümleyi parentez içerisinde ki anlam olucak cümleler seç"
+ */
+export function unwrapAndCleanParentheses(text: string = ""): string {
+  if (!text) return "";
+  let s = text;
+
+  // 1. Bilinen teknik kavram ve kısaltmaları parantezsiz, doğrudan cümle anlamına dönüştür
+  s = s.replace(/\(\s*modal\s*[\/,-]?\s*diyalog\s*\)/gi, "modal diyalog penceresi");
+  s = s.replace(/\(\s*modal\s*\)/gi, "modal pencere");
+  s = s.replace(/\(\s*diyalog\s*\)/gi, "diyalog penceresi");
+  s = s.replace(/\(\s*popup\s*\)/gi, "açılır pencere");
+  s = s.replace(/\(\s*Double[- ]?Click\s*\)/gi, "art arda iki kez tıklama");
+  s = s.replace(/\(\s*double[- ]?click\s*\)/gi, "art arda iki kez tıklama");
+  s = s.replace(/\(\s*çift\s*tıklama\s*\)/gi, "art arda iki kez tıklama");
+  s = s.replace(/\(\s*ESC\s*(?:veya|ya da|\/)\s*Kapat\s*\)/gi, "kapat butonu veya çıkış tuşu");
+  s = s.replace(/\(\s*ESC\s*\)/gi, "klavyeden çıkış tuşu");
+  s = s.replace(/\(\s*F5\s*\)/gi, "sayfayı yeniden yükleme");
+  s = s.replace(/\(\s*DevTools\s*Console\s*[\/,-]?\s*Network\s*\)/gi, "geliştirici araçları ve ağ kayıtları");
+  s = s.replace(/\(\s*DevTools\s*(?:Performance\s*(?:ve\s*)?)?Network\s*\)/gi, "geliştirici araçları ve ağ sekmesi");
+  s = s.replace(/\(\s*DevTools\s*\)/gi, "geliştirici araçları");
+  s = s.replace(/\(\s*Console\s*[\/,-]?\s*Network\s*\)/gi, "tarayıcı konsolu ve ağ trafiği");
+  s = s.replace(/\(\s*Network\s*\)/gi, "ağ trafiği");
+  s = s.replace(/\(\s*Console\s*\)/gi, "tarayıcı konsolu");
+  s = s.replace(/\(\s*500\s*[\/,-]?\s*Exception\s*\)/gi, "sunucu hatası veya sistem istisnası");
+  s = s.replace(/\(\s*Exception\s*\)/gi, "sistem hatası");
+  s = s.replace(/\(\s*E2E\s*(?:Replay)?\s*\)/gi, "uçtan uca akış");
+  s = s.replace(/\(\s*Resilience\s*\)/gi, "kesinti dayanıklılığı");
+  s = s.replace(/\(\s*QA\s*Notes\s*\)/gi, "özel kalite kontrol notları");
+  s = s.replace(/\(\s*CLS\s*\)/gi, "ekran düzeni kayması");
+  s = s.replace(/\(\s*Debounce\s*\)/gi, "mükerrer tıklama koruması");
+  s = s.replace(/\(\s*Pre-?conditions?\s*\)/gi, "");
+  s = s.replace(/\(\s*Expected\s*Results?\s*\)/gi, "");
+  s = s.replace(/\(\s*Test\s*Steps?\s*\)/gi, "");
+  s = s.replace(/\(\s*Target\s*Component\s*\)/gi, "");
+  s = s.replace(/\(\s*16:9\s*\)/gi, "");
+  s = s.replace(/\(\s*9:16\s*\)/gi, "");
+  s = s.replace(/\(\s*(?:Odak Noktası|Konum|Nokta|Bölge):[^\)]*\)/gi, "");
+  s = s.replace(/\(\s*X:%\d+,\s*Y:%\d+\s*\)/gi, "");
+  s = s.replace(/\(\s*Tam Ekran\s*\)/gi, "tam ekran");
+  s = s.replace(/\(\s*Açılış Ekranı\s*\)/gi, "açılış ekranı");
+  s = s.replace(/\(\s*Sabit Ekran Görüntüsü\s*\)/gi, "sabit ekran görüntüsü");
+  s = s.replace(/\(\s*Değişim Yok\s*\)/gi, "");
+  s = s.replace(/\(\s*Başlangıç\s*\)/gi, "başlangıç aşaması");
+  s = s.replace(/\(\s*Sonuç\s*\)/gi, "sonuç aşaması");
+
+  // 2. Parantezli video süre ve zaman damgalarını ayıkla: (00:00 - 00:15) veya (00:00)
+  s = s.replace(/\(\s*\d{1,2}:\d{2}\s*(?:[-–]|ile)\s*\d{1,2}:\d{2}(?:\s*arasındaki)?\s*\)/gi, "");
+  s = s.replace(/\(\s*\d{1,2}:\d{2}(?:\s*saniyesinde|\s*anında)?\s*\)/gi, "");
+
+  // 3. Kalan genel parantezlerin içindeki metni doğrudan cümleye akıcı biçimde entegre et
+  s = s.replace(/\(([^)]+)\)/g, (_match, inner) => {
+    const trimmed = inner.trim();
+    if (!trimmed || /^[-:•*.]+$/.test(trimmed)) return "";
+    if (/^\d{1,2}:\d{2}$/.test(trimmed)) return "";
+    return ` ${trimmed} `;
+  });
+
+  // 4. Kalan tek parantez karakterlerini temizle
+  s = s.replace(/[()]/g, "");
+
+  // 5. Noktalama işaretleri öncesindeki ve gereksiz çift boşlukları düzelt
+  s = s.replace(/\s+([,.:;!?])/g, "$1");
+  s = s.replace(/\s{2,}/g, " ").trim();
+
+  return s;
+}
+
+/**
+ * Metin içindeki video sürelerini ve zaman damgalarını (00:00, 00:00 - 00:15 vb.) temizler
+ */
+export function stripVideoTimestamps(text: string = ""): string {
+  if (!text) return "";
+  let s = text;
+
+  // (00:00 - 00:15) veya 00:00 - 00:15 aralıkları
+  s = s.replace(/\b\d{1,2}:\d{2}\s*(?:[-–]|ile)\s*\d{1,2}:\d{2}\s*(?:arasındaki)?\b/gi, "");
+
+  // 00:05 saniyesinde / saniyesindeki / saniyelerinde
+  s = s.replace(/\b\d{1,2}:\d{2}\s*saniyesindeki\b/gi, "ekrandaki");
+  s = s.replace(/\b\d{1,2}:\d{2}\s*saniyesinde\b/gi, "ilgili adımda");
+  s = s.replace(/\b\d{1,2}:\d{2}\s*saniyelerinde\b/gi, "akış boyunca");
+  s = s.replace(/\b\d{1,2}:\d{2}\s*saniyesine\b/gi, "son ana");
+  s = s.replace(/\b\d{1,2}:\d{2}\s*anında\b/gi, "ilgili adımda");
+  s = s.replace(/\b\d+\s*saniyelik\b/gi, "");
+
+  // Bağımsız zaman damgaları: 00:00, 01:23
+  s = s.replace(/\b\d{1,2}:\d{2}\b/g, "");
+
+  // Süre rozetleri ve etiketleri: ⏱ Süre: 00:15
+  s = s.replace(/⏱\s*Süre:\s*[\d:]+/gi, "");
+  s = s.replace(/Süre:\s*[\d:]+/gi, "");
+
+  // Boş kalmış noktalama veya ayraçları temizle
+  s = s.replace(/\s{2,}/g, " ").trim();
+
+  return s;
+}
+
+/**
+ * Bir test senaryosundaki tekrarlanan veya gereksiz alt adımları ayıklar
+ * ve sıralı numaralandırma (Adım 1, Adım 2...) uygular.
+ */
+export function deduplicateSteps(steps: string[] = []): string[] {
+  if (!Array.isArray(steps) || steps.length === 0) return [];
+
+  const seen = new Set<string>();
+  const seenWordSets: Set<string>[] = [];
+  const uniqueSteps: string[] = [];
+
+  for (const rawStep of steps) {
+    if (!rawStep || typeof rawStep !== "string") continue;
+    const trimmed = rawStep.trim();
+    if (!trimmed) continue;
+
+    // Gereksiz durağan/sabit durum veya telemetri adımlarını tamamen atla
+    const lower = trimmed.toLowerCase();
+    if (
+      lower.includes("görünümü stabil devam ediyor") ||
+      lower.includes("mikro değişim") ||
+      lower.includes("sabit ekran") ||
+      lower.includes("hareketsizliği / bekleme") ||
+      lower.includes("değişim yok")
+    ) {
+      continue;
+    }
+
+    // Karşılaştırma için normalizasyon (numara, damga, parantez ve noktalama işaretlerini soy)
+    const normalized = lower
+      .replace(/^adım\s*\d+[\s:.-]*/i, "")
+      .replace(/^\d+[\s:.-]*/, "")
+      .replace(/\[[^\]]*\]/g, "")
+      .replace(/\([^)]*\)/g, "")
+      .replace(/\b\d{1,2}:\d{2}\b/g, "")
+      .replace(/[^a-z0-9çğıöşü\s]/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (normalized.length < 5) continue;
+
+    // Kelime kümesi benzerliği kontrolü (Jaccard > %75 ise mükerrer sayılır)
+    const words = new Set(normalized.split(" ").filter((w) => w.length > 2));
+    let isSemanticDuplicate = false;
+
+    if (seen.has(normalized)) {
+      isSemanticDuplicate = true;
+    } else {
+      for (const prevWords of seenWordSets) {
+        let intersection = 0;
+        words.forEach((w) => {
+          if (prevWords.has(w)) intersection++;
+        });
+        const union = new Set([...words, ...prevWords]).size;
+        if (union > 0 && intersection / union > 0.75) {
+          isSemanticDuplicate = true;
+          break;
+        }
+      }
+    }
+
+    if (!isSemanticDuplicate) {
+      seen.add(normalized);
+      seenWordSets.push(words);
+      uniqueSteps.push(trimmed);
+    }
+  }
+
+  // Eğer tüm adımlar filtrelendiyse en azından ilk adımı koru
+  if (uniqueSteps.length === 0 && steps.length > 0) {
+    uniqueSteps.push(steps[0]);
+  }
+
+  // Adımları temizleyip Adım 1, Adım 2... olarak yeniden numaralandır
+  return uniqueSteps.map((step, idx) => {
+    let clean = cleanStepText(step, true);
+    clean = clean.replace(/^adım\s*\d+[\s:.-]*/i, "").replace(/^\d+[\s:.-]*/, "").trim();
+    return `Adım ${idx + 1}: ${clean}`;
+  });
+}
+
+/**
+ * Robotik sensor / telemetri jargonu temizler, herkesin anlayabileceği doğal QA diline dönüştürür
+ */
+function humanizeStepLanguage(text: string): string {
+  let s = text;
+
+  // Telemetri ve analiz jargonu temizliği
+  s = s.replace(/->\s*QA\s*Kontrolü:?\s*/gi, " - ");
+  s = s.replace(/QA\s*Kontrolü:?\s*/gi, "");
+  s = s.replace(/%\s*[\d.]+\s*(?:görsel\s*)?değişim[a-z0-9]*/gi, "");
+  s = s.replace(/\b\d{3,4}x\d{3,4}\s*(?:\([^)]*\))?/gi, ""); // 1920x1080 (16:9)
+  s = s.replace(/\bCLS\b/g, "ekran düzeni kayması");
+  s = s.replace(/DİKKAT:\s*/gi, "");
+  s = s.replace(/Saniye Saniye\s*/gi, "");
+
+  // Arayüz bölgelerini doğal Türkçe ifadelere dönüştür
+  s = s.replace(/Merkez Form\s*\/\s*Ana İçerik Alanı/gi, "Ana form ve içerik alanı");
+  s = s.replace(/Alt Aksiyon\s*\/\s*Onay Butonu Bölgesi/gi, "İşlem ve onay butonu");
+  s = s.replace(/Üst Navigasyon\s*\/\s*Başlık & Bildirim Barı/gi, "Üst menü ve başlık çubuğu");
+  s = s.replace(/Üst Navigasyon\s*\/\s*Başlık Barı/gi, "Üst menü çubuğu");
+  s = s.replace(/Sol Menü\s*\/\s*Yan Navigasyon Paneli/gi, "Yan menü ve navigasyon paneli");
+  s = s.replace(/Sağ Kontrol\s*\/\s*Durum & Aksiyon Bölgesi/gi, "Durum ve işlem paneli");
+
+  return s;
+}
+
+/**
+ * Test adım metnini temizler.
+ * Köşeli ve normal parantezleri temizleyip içindeki anlamı cümleye doğrudan bağlar.
+ * isAdmin = false ise video sürelerini ve zaman damgalarını tamamen gizler.
+ */
+export function cleanStepText(text: string = "", isAdmin: boolean = false): string {
+  if (!text) return "";
+  let s = text.trim();
+
+  // 1. Köşeli parantezleri kaldır
+  s = removeSquareBrackets(s);
+
+  // 2. Parantez içi açıklamaların anlamını doğrudan cümleye entegre et (parantezsiz)
+  s = unwrapAndCleanParentheses(s);
+
+  // 3. Telemetri ve robotik ifadeleri doğal QA diline çevir
+  s = humanizeStepLanguage(s);
+
+  // 4. Normal kullanıcılar için video sürelerini ve zaman damgalarını gizle
+  if (!isAdmin) {
+    s = stripVideoTimestamps(s);
+  }
+
+  // 5. Noktalama ve boşluk düzenlemeleri
+  s = s.replace(/["'“”]\s*senaryosu/gi, " senaryosu");
+  s = s.replace(/^[•\s-:–—]+/, "");
+  s = s.replace(/[-:–—\s]+$/, "");
+  s = s.replace(/\s{2,}/g, " ");
+
+  return s.trim();
+}
+
+/**
+ * Test adımını frontend'de göstermek için ayrıştırır
+ */
+export function formatStepForDisplay(
+  step: string = "",
+  isAdmin: boolean = false
+): { timestamp?: string; text: string } {
+  let timestamp: string | undefined = undefined;
+  const match = step.match(/\[?(\d{1,2}:\d{2})\]?/);
+  if (match) {
+    timestamp = match[1];
+  }
+
+  const cleanText = cleanStepText(step, isAdmin);
+  return {
+    timestamp: isAdmin ? timestamp : undefined,
+    text: cleanText,
+  };
+}
 
 export function cleanSubject(subject: string = ""): string {
   if (!subject) return "";
-  let s = subject.trim();
-  s = s.replace(/^\[[^\]]+\]\s*/, "").replace(/^P\d+\s*[-:–]\s*/i, "");
+  let s = cleanStepText(subject, false);
+  s = s.replace(/^P\d+\s*[-:–]\s*/i, "");
   s = s.replace(/^["'“”]+|["'“”]+$/g, "").trim();
-  if (s.length > 40) {
-    s = s.slice(0, 38).trim() + "...";
-  }
   return s;
 }
 
 export function formatDirectiveTitle(raw: string = ""): string {
   if (!raw) return "İş Mantığı ve Kural Doğrulaması";
-  let text = raw.trim();
+  let text = cleanStepText(raw, false);
 
-  // Madde / Adım / Sayı numaralandırmalarını temizle
   text = text.replace(/^(\d+[\.\)]|\*|-|•|adım\s*\d*:?|madde\s*\d*:?|gereksinim\s*\d*:?)\s*/i, "").trim();
-
-  // Dış tırnakları temizle
   text = text.replace(/^["'“”]+|["'“”]+$/g, "").trim();
 
-  // Kod veya kural içindeki Exception adını yakala (örn: AgeRestrictionException, CouponInvalidException, ValueError)
+  if (!text || text.length < 3) {
+    return "Kullanıcı Davranışı ve İş Kuralı Doğrulaması";
+  }
+
   const exMatch = text.match(/([A-Z][a-zA-Z0-9]*(?:Exception|Error|Fault))/);
   if (exMatch) {
     return `${exMatch[1]} Hata Durumu Kontrolü`;
   }
 
-  // Karşılaştırma için ASCII 'i' normalizasyonu
   const lower = text.replace(/[Iİ]/g, "i").replace(/ı/g, "i").toLowerCase();
 
-  // Belirgin teknik bileşenler ve limit kuralları
   if (lower.includes("x-idempotency-key")) return "X-Idempotency-Key İstek Doğrulaması";
   if (lower.includes("redis") && (lower.includes("race") || lower.includes("kilit") || lower.includes("lock"))) {
     return "Redis Dağıtık Kilit ve Race Condition Koruması";
   }
-  if (lower.includes("3d-secure") || lower.includes("180 saniye")) return "3D-Secure 180 Saniye Zaman Aşımı Kontrolü";
+  if (lower.includes("3d-secure") || lower.includes("180 saniye")) return "3D-Secure Zaman Aşımı Kontrolü";
   if (lower.includes("pos komisyon")) return "POS Komisyon Oranı ve Tutar Hesaplaması";
   if (lower.includes("deadlock") || lower.includes("harici gateway")) return "Deadlock ve Harici Gateway Hata Yönetimi";
   if (lower.includes("kısmi iade") || lower.includes("partial refund")) return "Kısmi İade Tutarı Sınır Kontrolü";
   if (lower.includes("audit log") || (lower.includes("denetim") && lower.includes("kayıt"))) {
-    return "İşlem Denetim Kaydı (Audit Log) Doğrulaması";
+    return "İşlem Denetim Kaydı Doğrulaması";
   }
-  if (lower.includes("15 dakika") && lower.includes("kupon")) return "15 Dakika Kupon Süre Aşımı (TTL) Kontrolü";
+  if (lower.includes("15 dakika") && lower.includes("kupon")) return "Kupon Süre Aşımı Kontrolü";
   if (lower.includes("couponinvalid") || (lower.includes("kupon") && lower.includes("geçersiz"))) {
-    return "CouponInvalidException Hata Durumu Kontrolü";
+    return "Geçersiz Kupon Hata Durumu Kontrolü";
   }
   if (lower.includes("150 tl") || (lower.includes("150") && lower.includes("sepet"))) return "150 TL Minimum Sepet Tutarı Kontrolü";
   if (lower.includes("%20") && lower.includes("indirim")) return "%20 Azami İndirim Sınırı Kontrolü";
   if (lower.includes("18 yaş") || (lower.includes("18") && lower.includes("yaş"))) return "18 Yaş Sınırı Kayıt Kısıtlaması Kontrolü";
   if (lower.includes("e-posta") && (lower.includes("sifre") || lower.includes("şifre"))) return "E-Posta ve Şifre ile Giriş Doğrulaması";
   if (lower.includes("kilitlen") || lower.includes("hesap kilidi")) return "Hesap Kilitleme ve Süre Kontrolü";
+  if (lower.includes("çift tıkla") || lower.includes("mükerrer istek") || lower.includes("cift tikla")) {
+    return "Butona Çift Tıklama Engeli ve Mükerrer İstek Koruması";
+  }
+  if (lower.includes("donma") || lower.includes("yanıt vermez") || lower.includes("spinner")) {
+    return "Arayüz Donması ve Yükleniyor Gösterim Kontrolü";
+  }
+  if (lower.includes("429") || lower.includes("rate limit")) {
+    return "Rate Limit ve Hata Mesajı Gösterim Kontrolü";
+  }
 
-  // Kod parçacıklarından türeyen direktifler
   if (lower.startsWith("export class ") || lower.startsWith("class ")) {
     const clsName = text.replace(/^(export\s+)?class\s+([A-Za-z0-9_]+).*/, "$2");
     return `${clsName} Sınıf Yapısı Kontrolü`;
   }
   if (lower.includes("constructor(")) return "Constructor Parametre ve Başlatma Kontrolü";
   if (lower.includes("throw new error") || lower.includes("throw new exception")) return "Hata ve İstisna Yönetimi Kontrolü";
-  if (lower.includes("secretkey") && (lower.includes("16") || lower.includes("uzunluk"))) return "16 Karakter SecretKey Validasyon Kontrolü";
-  if (lower.includes("activesessions")) return "ActiveSessions Oturum Havuzu Kontrolü";
-  if (lower.includes("secretkey")) return "SecretKey Güvenlik Kontrolü";
 
-  // Uygulama / Oyun özel anahtar kelimeleri
-  if (lower.includes("interstitial") && lower.includes("level 20")) return "Level 20 ve İki Bölümde Bir Reklam Kontrolü";
-  if (lower.includes("rewarded")) return "Rewarded Reklam Gösterim Kontrolü";
-  if (lower.includes("banner")) return "Banner Reklam Durum Kontrolü";
-  if (lower.includes("applovin") || (lower.includes("max") && lower.includes("adapter"))) return "AppLovin MAX Reklam Entegrasyon Kontrolü";
-  if (lower.includes("appsflyer") || lower.includes("roi360")) return "AppsFlyer ve ROI360 Satın Alma Takip Kontrolü";
-  if (lower.includes("att") || lower.includes("facebook bootstrap")) return "Eski ATT ve Facebook Köprüsü Temizlik Kontrolü";
-  if (lower.includes("tracking design") || (lower.includes("amplitude") && lower.includes("firebase"))) return "Amplitude ve Firebase Olay Takip Doğrulaması";
-  if (lower.includes("loading ekranı") || (lower.includes("loading") && lower.includes("sdk"))) return "Loading Ekranı ve SDK Başlatma Kontrolü";
-  if (lower.includes("sdk anahtarları") || lower.includes("ayar dosyasında")) return "SDK Anahtarları Yapılandırma Dosyası Kontrolü";
-  if (lower.includes("konveyör") && lower.includes("mesh")) return "Konveyör Bandı Mesh Optimizasyon Kontrolü";
-  if (lower.includes("mesh optimizer")) return "Mesh Optimizer 3D Model Araç Kontrolü";
-  if (lower === "performans" || text.toLowerCase() === "performans") return "Performans ve Optimizasyon Kontrolü";
-
-  // Gereksiz Türkçe dolgu fiillerini ve ifadelerini temizle
   let cleaned = text
     .replace(/["'“”]/g, "")
     .replace(/\s+(olmalıdır|sağlayabilmelidir|tamamlanmalıdır|edilmelidir|yapılmalıdır|fırlatılmalıdır|engellenmelidir|gerekmektedir|sağlanmalıdır|içermelidir|tanımlanmalıdır|çıkmalıdır|gösterilmelidir)\.?$/i, "")
@@ -89,152 +372,115 @@ export function formatDirectiveTitle(raw: string = ""): string {
     .replace(/^(Kullanıcı|Sistem|İşlem|Modül)\s+/i, "")
     .trim();
 
-  // Sayısal sınır veya süreler
-  const numMatch = cleaned.match(/(\d+(?:[.,]\d+)?\s*(?:tl|ms|saniye|dakika|%|adet|karakter|grup|kat))/i);
-  if (numMatch && cleaned.length > 45) {
-    cleaned = `${numMatch[1].toUpperCase()} Kural ve Sınır Kontrolü`;
-  } else if (cleaned.length > 50) {
-    cleaned = cleaned.slice(0, 48).trim() + "...";
-  }
-
-  // Anlamlı son ek kontrolü
   if (!/(kontrolü|doğrulaması|testi|analizi|koruması)$/i.test(cleaned)) {
-    if (cleaned.length <= 40) {
-      cleaned += " Kontrolü";
-    }
+    cleaned += " Kontrolü";
   }
 
   return cleaned;
 }
 
-export function cleanTitle(title: string = ""): string {
+/**
+ * Test başlığını temizler.
+ * Köşeli parantezleri ve normal parantez içi etiketleri kaldırıp anlamı korur.
+ * isAdmin = false ise video sürelerini ve zaman damgalarını gizler.
+ */
+export function cleanTitle(title: string = "", isAdmin: boolean = false): string {
   if (!title) return "";
   let t = title.trim();
 
-  // Köşeli parantez içinde bileşen adı yakalama: [PlayerCombat], [calculate_discount]
-  const tagMatch = t.match(/^\[([^\]]+)\]\s*(.*)$/);
-  let prefixTag = "";
-  if (tagMatch) {
-    prefixTag = tagMatch[1].trim();
-    t = tagMatch[2].trim();
-  }
+  // 1. Köşeli parantezleri kaldır
+  t = removeSquareBrackets(t);
 
-  // P1/P2/P3 ve öncelik öneklerini temizle
+  // 2. Parantez içindeki açıklamaları doğrudan başlığa entegre et
+  t = unwrapAndCleanParentheses(t);
+
+  // 3. P1/P2/P3 öneklerini temizle
   t = t.replace(/^P\d+\s*[-:–]\s*/i, "").trim();
 
-  // Dış tırnakları temizle
+  // 4. Normal kullanıcılar için video sürelerini gizle
+  if (!isAdmin) {
+    t = stripVideoTimestamps(t);
+  }
+
+  // 5. "Saniye Saniye" gibi robotik ifadeleri temizle
+  t = t.replace(/Saniye Saniye\s*/gi, "");
+
+  // 6. Dış tırnakları ve gereksiz ayraçları temizle
   t = t.replace(/^["'“”]+|["'“”]+$/g, "").trim();
+  t = t.replace(/^[-:–—\s]+/, "");
+  t = t.replace(/[-:–—\s]+$/, "");
+  t = t.replace(/\s{2,}/g, " ");
 
-  const lower = t.replace(/[Iİ]/g, "i").replace(/ı/g, "i").toLowerCase();
-  const lowerTag = prefixTag.replace(/[Iİ]/g, "i").replace(/ı/g, "i").toLowerCase();
-
-  const isGenericTag = /^(p\d+|dev|qa|unit|happy path|fonksiyonel|sınır değer|kural doğrulama|core sözleşme|developer güvenlik|robustness|finans)/i.test(lowerTag);
-  const componentFromTag = !isGenericTag && /^[a-zA-Z0-9_]+$/.test(prefixTag) ? prefixTag : "";
-
-  // 1. Metot test başlıkları (İmza ve gereksiz sözleşme kelimeleri arındırılır)
-  // Örn: "calculate_discount - 'def calculate_discount(...)' Girdi-Çıktı Kontratı ve Sınır Değer Doğrulaması"
-  const methodMatch = t.match(/^([a-zA-Z0-9_]+)\s*-\s*['"][^'"]+['"]\s*(.*)$/);
-  if (methodMatch) {
-    const methodName = methodMatch[1];
-    const tail = methodMatch[2] || "";
-    let statusSuffix = "";
-    if (tail.includes("Yeni Eklenen") || tail.includes("Yeni Metot")) statusSuffix = " (Yeni Metot)";
-    else if (tail.includes("Değiştirilen") || tail.includes("Güncellenen")) statusSuffix = " (Güncellenen Metot)";
-    return `${methodName} Parametre ve Sınır Değer Doğrulaması${statusSuffix}`;
+  if (!t || t.length < 3) {
+    return "Kullanıcı Davranışı ve Fonksiyonel Doğrulama";
   }
 
-  // Tırnak içinde doğrudan metot imzası:
-  // Örn: "'void TakeDamage(int damage)' Girdi-Çıktı Kontratı..." veya "'def calculate_discount(...)'"
-  const sigMatch = t.match(/^['"]?(?:public|private|protected|async|def|void|function)?\s*([a-zA-Z0-9_]+)\s*\([^)]*\)\s*(?::\s*[^'"]+)?['"]?\s*(?:Girdi-Çıktı Kontratı|Sözleşme|Parametre).*$/i);
-  if (sigMatch) {
-    const fnName = componentFromTag || sigMatch[1];
-    let statusSuffix = "";
-    if (t.includes("Yeni Eklenen") || t.includes("Yeni Metot")) statusSuffix = " (Yeni Metot)";
-    else if (t.includes("Değiştirilen") || t.includes("Güncellenen")) statusSuffix = " (Güncellenen Metot)";
-    return `${fnName} Parametre ve Sınır Değer Doğrulaması${statusSuffix}`;
+  // 7. Kullanıcı Kuralı: "Test adımların başlıklarında Video ve Fotoğraf kelimesi bulunmasın"
+  // Video, Fotoğraf veya Görsel öneklerini ve kelimelerini başlıktan tamamen arındır
+  t = t.replace(/^(?:Video|Fotoğraf|Görsel)\s*\d*[\s:-]*/i, "").trim();
+  t = t.replace(/\bVideo\s*Oynatıcı\b/gi, "Medya Oynatıcı");
+  t = t.replace(/\b(Video|Videolar|Videoları|Videoyu|Fotoğraf|Fotoğraflar|Fotoğrafları|Fotoğrafı|Görsel|Görseller|Görselleri|Görseli)\b/gi, "");
+
+  // Dış tırnakları, iki nokta üst üste ve gereksiz ayraçları tekrar temizle
+  t = t.replace(/^[-:–—\s]+/, "");
+  t = t.replace(/[-:–—\s]+$/, "");
+  t = t.replace(/\s{2,}/g, " ").trim();
+
+  if (!t || t.length < 3) {
+    return "Uçtan Uca Kullanıcı Akışı ve Arayüz Doğrulaması";
   }
 
-  const methodMatch2 = t.match(/^([a-zA-Z0-9_]+)\s*-\s*(?:Girdi-Çıktı Kontratı|Metot Mantık|Sözleşme).*(Yeni Eklenen|Değiştirilen|Güncellenen)?.*$/i);
-  if (methodMatch2) {
-    const methodName = methodMatch2[1];
-    let statusSuffix = "";
-    if (t.includes("Yeni Eklenen") || t.includes("Yeni Metot")) statusSuffix = " (Yeni Metot)";
-    else if (t.includes("Değiştirilen") || t.includes("Güncellenen")) statusSuffix = " (Güncellenen Metot)";
-    return `${methodName} Parametre ve Sınır Değer Doğrulaması${statusSuffix}`;
+  return t;
+}
+
+/**
+ * Genel analiz özetini (overview) temizler
+ */
+export function cleanOverview(overview: string = "", isAdmin: boolean = false): string {
+  if (!overview) return "";
+  let o = removeSquareBrackets(overview);
+  o = unwrapAndCleanParentheses(o);
+
+  if (!isAdmin) {
+    o = stripVideoTimestamps(o);
+    o = o.replace(/\(\s*\d+\s*ayrı saniye karesi\s*\)/gi, "");
+    o = o.replace(/\|\s*[\d:]+\s*\|\s*\d+\s*sn analiz/gi, "");
+    o = o.replace(/\b\d+\s*ayrı saniye karesi\b/gi, "");
+    o = o.replace(/\b\d+\s*sn analiz\b/gi, "");
+    o = o.replace(/Saniye Saniye\s*/gi, "");
   }
 
-  // 2. Sınıf constructor ve ilk durum testleri
-  // Örn: "OrderService - Yaşam Döngüsü, State Başlatma ve Constructor Doğrulama Testi"
-  if (lower.includes("constructor") && (lower.includes("yaşam döngüsü") || lower.includes("state başlatma") || lower.includes("doğrulama testi"))) {
-    const match = t.match(/^([a-zA-Z0-9_]+)/);
-    const clsName = componentFromTag || (match ? match[1] : "Sınıf");
-    return `${clsName} Constructor ve İlk Durum Doğrulaması`;
+  o = o.replace(/\s{2,}/g, " ").trim();
+  return o;
+}
+
+/**
+ * Bir test senaryosunun başlık, adımlar (tekrar edenleri ayıklayarak),
+ * ön koşul ve beklenen sonucunu tamamen temizler
+ */
+export function cleanTestCase(tc: any, isAdmin: boolean = false): any {
+  if (!tc) return tc;
+
+  const rawSteps = Array.isArray(tc.steps) ? tc.steps : [];
+  const cleanedSteps = rawSteps.map((s: string) => cleanStepText(s, isAdmin));
+  const deduplicated = deduplicateSteps(cleanedSteps);
+
+  const cleanedType = tc.type ? cleanTitle(tc.type, isAdmin) : undefined;
+  let cleanedTarget = tc.targetComponent ? cleanStepText(tc.targetComponent, isAdmin) : undefined;
+  if (cleanedTarget) {
+    cleanedTarget = cleanedTarget.replace(/^(?:Video|Fotoğraf|Görsel)\s*\d*[\s:-]*/i, "").trim();
+    cleanedTarget = cleanedTarget.replace(/^[-:–—\s]+/, "").trim();
+    if (!cleanedTarget) cleanedTarget = "Ana Arayüz Bileşenleri";
   }
 
-  const classMatch = t.match(/^([a-zA-Z0-9_]+)\s*-\s*(?:Yaşam Döngüsü|State Başlatma|Constructor Doğrulama).*$/i);
-  if (classMatch) {
-    return `${classMatch[1]} Constructor ve İlk Durum Doğrulaması`;
-  }
-
-  // QA Sınıf testi: "'PlayerCombat' Bileşeninin Fonksiyonel Davranışı ve Durum Doğrulaması"
-  const qaClassMatch = t.match(/^['"]?([a-zA-Z0-9_]+)['"]?\s*Bileşeninin Fonksiyonel Davranışı.*$/i);
-  if (qaClassMatch) {
-    return `${qaClassMatch[1]} Fonksiyonel Davranış ve Durum Doğrulaması`;
-  }
-
-  // QA Metot testi: "'TakeDamage' İşlevinde Pozitif Kullanım ve Sınır Değer Doğrulaması"
-  const qaMethodMatch = t.match(/^['"]?([a-zA-Z0-9_]+)['"]?\s*İşlevinde Pozitif Kullanım.*$/i);
-  if (qaMethodMatch) {
-    return `${qaMethodMatch[1]} Pozitif Kullanım ve Sınır Değer Kontrolü`;
-  }
-
-  // 3. Robustness / Exception testleri
-  // Örn: '"Kayıt Yaş Doğrulaması" İçin Null, Tip Uyuşmazlığı ve İstisna (Exception) Testi'
-  if (lower.includes("null, tip uyuşmazlığı") || lower.includes("null ve tip uyuşmazlığı") || (lower.includes("null") && lower.includes("istisna"))) {
-    return "Null ve Uyumsuz Veri Tipleri Hata Toleransı";
-  }
-
-  // 4. Güvenlik filtre testleri
-  // Örn: '"Kayıt Yaş Doğrulaması" İhlal ve Güvenlik Filtresi Doğrulaması'
-  if (lower.includes("ihlal ve güvenlik filtresi") || (lower.includes("güvenlik filtresi") && lower.includes("doğrulaması"))) {
-    return "Güvenlik Filtresi ve Yetkisiz Erişim Kontrolü";
-  }
-
-  // 5. Token / Kimlik doğrulama testleri
-  if (lower.includes("geçersiz token") || (lower.includes("token") && lower.includes("brute-force")) || lower.includes("hatalı giriş denemeleri, maskeleme")) {
-    return "Token Geçerliliği, Süre Aşımı ve Brute-Force Koruması";
-  }
-
-  // 6. Finans & Idempotency testleri
-  if (lower.includes("tutar") && (lower.includes("idempotency") || lower.includes("cift istek") || lower.includes("çift istek"))) {
-    return "Tutar Doğrulaması ve Çift İstek (Idempotency) Koruması";
-  }
-
-  // 7. QA Uçtan Uca / Başarılı Akış testleri
-  if (lower.includes("standard kullanım") || lower.includes("standart kullanım") || lower.includes("happy path")) {
-    return "Temel Kullanıcı Akışı ve Başarılı İşlem Doğrulaması";
-  }
-
-  // 8. QA Eşzamanlılık ve Çift Tıklama testleri
-  if (lower.includes("çift tıklama") || lower.includes("double-click")) {
-    return "Çift Tıklama Engeli ve İşlem İptali Doğrulaması";
-  }
-
-  // 9. QA Ağ Toleransı testleri
-  if (lower.includes("ağ bağlantı kopması") || (lower.includes("f5") && lower.includes("yenileme"))) {
-    return "Ağ Kesintisi ve Sayfa Yenilemede Veri Korunumu";
-  }
-
-  // 10. Şartname direktifleri ("... Kural Doğrulaması")
-  const ruleMatch = t.match(/^(?:["'“”])?(.*?)(?:["'“”])?\s*(?:Kural Doğrulaması|Fonksiyonel İş Kuralı Doğrulaması|Sınır Değer ve Validasyon Analizi|Standart Kullanım ve Başarı Akışı)$/i);
-  if (ruleMatch && ruleMatch[1].length > 5) {
-    return formatDirectiveTitle(ruleMatch[1]);
-  }
-
-  // Cümle veya direktif ise
-  if (t.length > 20 || /^(export|class|private|public|def|function)\b/.test(t) || t.includes(" ")) {
-    return formatDirectiveTitle(t);
-  }
-
-  return t.replace(/^["'“”]+|["'“”]+$/g, "").trim();
+  return {
+    ...tc,
+    title: cleanTitle(tc.title || "", isAdmin),
+    type: cleanedType || tc.type,
+    testType: cleanedType || tc.testType,
+    targetComponent: cleanedTarget,
+    preconditions: cleanStepText(tc.preconditions || "", isAdmin),
+    steps: deduplicated,
+    expectedResult: cleanStepText(tc.expectedResult || "", isAdmin),
+  };
 }

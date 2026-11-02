@@ -8,20 +8,16 @@ import {
   Button,
   Chip,
   Paper,
-  Divider,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  Tooltip,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
-import { cleanTitle } from "../utils/titleCleaner";
+import { cleanTitle, cleanStepText, cleanOverview, formatStepForDisplay } from "../utils/titleCleaner";
 
 interface TestDetailViewProps {
   plan: TestPlanResult;
   onBack: () => void;
   onGoToEdit: () => void;
   onGoToExecute: () => void;
+  isAdmin?: boolean;
 }
 
 export const TestDetailView: React.FC<TestDetailViewProps> = ({
@@ -29,6 +25,7 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
   onBack,
   onGoToEdit,
   onGoToExecute,
+  isAdmin = false,
 }) => {
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
 
@@ -46,6 +43,32 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
     return "#10b981";
   };
 
+  const getTestTypeBadgeProps = (typeStr: string = "") => {
+    const lower = typeStr.toLowerCase();
+    if (lower.includes("oyun") || lower.includes("gameplay")) {
+      return {
+        label: typeStr.startsWith("🎮") ? typeStr : `🎮 ${typeStr}`,
+        sx: { background: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.4)", fontWeight: 700 },
+      };
+    }
+    if (lower.includes("yapay zeka") || lower.includes("ai")) {
+      return {
+        label: typeStr.startsWith("🤖") ? typeStr : `🤖 ${typeStr}`,
+        sx: { background: "rgba(6, 182, 212, 0.2)", color: "#67e8f9", border: "1px solid rgba(6, 182, 212, 0.4)", fontWeight: 700 },
+      };
+    }
+    if (lower.includes("güvenlik") || lower.includes("mükerrer") || lower.includes("özel karakter")) {
+      return {
+        label: typeStr.startsWith("🔒") ? typeStr : `🔒 ${typeStr}`,
+        sx: { background: "rgba(245, 158, 11, 0.15)", color: "#fcd34d", border: "1px solid rgba(245, 158, 11, 0.35)", fontWeight: 700 },
+      };
+    }
+    return {
+      label: typeStr,
+      sx: { backgroundColor: "rgba(255, 255, 255, 0.06)", color: "#94a3b8" },
+    };
+  };
+
   const copyToClipboard = (text: string, format: string) => {
     navigator.clipboard.writeText(text);
     setCopiedFormat(format);
@@ -53,34 +76,43 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
   };
 
   const exportAsMarkdown = () => {
-    let md = `# Test Planı: ${plan.title}\n\n`;
+    let md = `# Test Planı: ${cleanTitle(plan.title, isAdmin)}\n\n`;
     md += `**Kategori:** ${plan.category} | **Oluşturulma Tarihi:** ${new Date(plan.createdAt).toLocaleString("tr-TR")}\n`;
     md += `**Toplam Test Sayısı:** ${plan.totalTestCount} | **Kritik Test:** ${plan.criticalTestCount}\n\n`;
-    md += `## Analiz Özeti\n${plan.overview}\n\n---\n\n## Test Senaryoları\n\n`;
+    md += `## Analiz Özeti\n${cleanOverview(plan.overview, isAdmin)}\n\n---\n\n## Test Senaryoları\n\n`;
 
     plan.testCases.forEach((tc, idx) => {
-      md += `### ${idx + 1}. [${tc.id}] ${cleanTitle(tc.title)}\n`;
+      md += `### ${idx + 1}. ${tc.id}: ${cleanTitle(tc.title, isAdmin)}\n`;
       md += `- **Öncelik:** ${formatPriority(tc.priority)}\n`;
       md += `- **Test Türü:** ${tc.type}\n`;
-      if (tc.targetComponent) md += `- **Bileşen:** ${tc.targetComponent}\n`;
-      md += `- **Ön Koşul:** ${tc.preconditions}\n`;
+      if (tc.targetComponent) md += `- **Bileşen:** ${cleanStepText(tc.targetComponent, isAdmin)}\n`;
+      md += `- **Ön Koşul:** ${cleanStepText(tc.preconditions, isAdmin)}\n`;
       md += `- **Adımlar:**\n`;
-      tc.steps.forEach((s) => (md += `  - ${s}\n`));
-      md += `- **Beklenen Sonuç:** ${tc.expectedResult}\n\n`;
+      tc.steps.forEach((s) => (md += `  - ${cleanStepText(s, isAdmin)}\n`));
+      md += `- **Beklenen Sonuç:** ${cleanStepText(tc.expectedResult, isAdmin)}\n\n`;
     });
 
     copyToClipboard(md, "Markdown");
   };
 
   const exportAsJson = () => {
-    const jsonStr = JSON.stringify({
-      ...plan,
-      testCases: plan.testCases.map((tc) => ({
-        ...tc,
-        title: cleanTitle(tc.title),
-        priority: formatPriority(tc.priority),
-      })),
-    }, null, 2);
+    const jsonStr = JSON.stringify(
+      {
+        ...plan,
+        title: cleanTitle(plan.title, isAdmin),
+        overview: cleanOverview(plan.overview, isAdmin),
+        testCases: plan.testCases.map((tc) => ({
+          ...tc,
+          title: cleanTitle(tc.title, isAdmin),
+          priority: formatPriority(tc.priority),
+          preconditions: cleanStepText(tc.preconditions, isAdmin),
+          steps: tc.steps.map((s) => cleanStepText(s, isAdmin)),
+          expectedResult: cleanStepText(tc.expectedResult, isAdmin),
+        })),
+      },
+      null,
+      2
+    );
     copyToClipboard(jsonStr, "JSON");
   };
 
@@ -88,12 +120,12 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
     const headers = ["Test ID", "Başlık", "Öncelik", "Tür", "Ön Koşul", "Adımlar", "Beklenen Sonuç"];
     const rows = plan.testCases.map((tc) => [
       `"${tc.id}"`,
-      `"${cleanTitle(tc.title).replace(/"/g, '""')}"`,
+      `"${cleanTitle(tc.title, isAdmin).replace(/"/g, '""')}"`,
       `"${formatPriority(tc.priority)}"`,
       `"${tc.type}"`,
-      `"${tc.preconditions.replace(/"/g, '""')}"`,
-      `"${tc.steps.join(" | ").replace(/"/g, '""')}"`,
-      `"${tc.expectedResult.replace(/"/g, '""')}"`,
+      `"${cleanStepText(tc.preconditions, isAdmin).replace(/"/g, '""')}"`,
+      `"${tc.steps.map((s) => cleanStepText(s, isAdmin)).join(" | ").replace(/"/g, '""')}"`,
+      `"${cleanStepText(tc.expectedResult, isAdmin).replace(/"/g, '""')}"`,
     ]);
 
     const csvContent = "\uFEFF" + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
@@ -175,7 +207,7 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
           <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 1 }}>
             <span style={{ fontSize: "1.5rem" }}>🔍</span>
             <Typography variant="h5" sx={{ fontWeight: 800, color: "#f8fafc" }}>
-              {plan.title}
+              {cleanTitle(plan.title, isAdmin)}
             </Typography>
             <Chip
               label={plan.category.toUpperCase()}
@@ -206,8 +238,8 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
             <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 700, display: "block", mb: 0.5 }}>
               📌 Analiz ve Değişiklik Özeti:
             </Typography>
-            <Typography variant="body2" sx={{ color: "#e2e8f0", lineHeight: 1.6 }}>
-              {plan.overview}
+            <Typography variant="body2" sx={{ color: "#e2e8f0", lineHeight: 1.6, whiteSpace: "pre-line" }}>
+              {cleanOverview(plan.overview, isAdmin)}
             </Typography>
           </Paper>
 
@@ -282,7 +314,7 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
                   }}
                 />
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#f8fafc" }}>
-                  {cleanTitle(tc.title)}
+                  {cleanTitle(tc.title, isAdmin)}
                 </Typography>
               </Stack>
 
@@ -298,31 +330,35 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
                     border: `1px solid ${getPriorityColor(tc.priority)}`,
                   }}
                 />
-                <Chip
-                  label={tc.type}
-                  size="small"
-                  sx={{
-                    fontSize: "0.72rem",
-                    backgroundColor: "rgba(255, 255, 255, 0.06)",
-                    color: "#94a3b8",
-                  }}
-                />
+                {(() => {
+                  const badge = getTestTypeBadgeProps(tc.type);
+                  return (
+                    <Chip
+                      label={badge.label}
+                      size="small"
+                      sx={{
+                        fontSize: "0.72rem",
+                        ...badge.sx,
+                      }}
+                    />
+                  );
+                })()}
               </Stack>
             </Stack>
 
             {tc.targetComponent && (
               <Typography variant="caption" sx={{ color: "#38bdf8", display: "block", mb: 1 }}>
-                🎯 Hedef Bileşen / Modül: <b>{tc.targetComponent}</b>
+                🎯 Hedef Bileşen / Modül: <b>{cleanStepText(tc.targetComponent, isAdmin)}</b>
               </Typography>
             )}
 
             {/* Ön Koşul */}
             <Box sx={{ mb: 1.5, p: 1.2, background: "rgba(0, 0, 0, 0.2)", borderRadius: 1.5 }}>
               <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 700, display: "block" }}>
-                Ön Koşul (Preconditions):
+                Ön Koşul:
               </Typography>
               <Typography variant="body2" sx={{ color: "#cbd5e1", fontSize: "0.85rem" }}>
-                {tc.preconditions || "Özel bir ön koşul tanımlanmadı."}
+                {cleanStepText(tc.preconditions, isAdmin) || "Özel bir ön koşul tanımlanmadı."}
               </Typography>
             </Box>
 
@@ -331,32 +367,51 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
               <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 700, display: "block", mb: 0.5 }}>
                 Test Adımları:
               </Typography>
-              <Stack spacing={0.5}>
-                {tc.steps.map((step, sIdx) => (
-                  <Box
-                    key={sIdx}
-                    sx={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      fontSize: "0.85rem",
-                      color: "#e2e8f0",
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <span style={{ color: "#6366f1", marginRight: 8, fontWeight: 700 }}>•</span>
-                    <span>{step}</span>
-                  </Box>
-                ))}
+              <Stack spacing={0.8}>
+                {tc.steps.map((step, sIdx) => {
+                  const stepInfo = formatStepForDisplay(step, isAdmin);
+                  return (
+                    <Box
+                      key={sIdx}
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 1,
+                        fontSize: "0.85rem",
+                        color: "#e2e8f0",
+                        lineHeight: 1.5,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span style={{ color: "#6366f1", marginRight: 2, fontWeight: 700 }}>•</span>
+                      {isAdmin && stepInfo.timestamp && (
+                        <Chip
+                          size="small"
+                          label={`⏱ ${stepInfo.timestamp}`}
+                          sx={{
+                            height: 18,
+                            fontSize: "0.68rem",
+                            fontWeight: 800,
+                            background: "rgba(6, 182, 212, 0.2)",
+                            color: "#38bdf8",
+                            fontFamily: "monospace",
+                          }}
+                        />
+                      )}
+                      <span>{stepInfo.text}</span>
+                    </Box>
+                  );
+                })}
               </Stack>
             </Box>
 
             {/* Beklenen Sonuç */}
             <Box sx={{ p: 1.2, background: "rgba(16, 185, 129, 0.08)", border: "1px solid rgba(16, 185, 129, 0.2)", borderRadius: 1.5 }}>
               <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, display: "block" }}>
-                ✓ Beklenen Sonuç (Expected Result):
+                ✓ Beklenen Sonuç:
               </Typography>
               <Typography variant="body2" sx={{ color: "#a7f3d0", fontSize: "0.85rem" }}>
-                {tc.expectedResult}
+                {cleanStepText(tc.expectedResult, isAdmin)}
               </Typography>
             </Box>
           </Paper>
@@ -365,4 +420,3 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
     </Box>
   );
 };
-

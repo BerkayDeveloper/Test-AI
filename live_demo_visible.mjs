@@ -57,7 +57,7 @@ async function runLiveVisibleDemo() {
 
   try {
     // 1. Sayfayı Aç
-    await page.goto("http://localhost:3000", { waitUntil: "networkidle0" });
+    await page.goto("http://localhost:3001", { waitUntil: "networkidle0" });
     await sleep(1500);
 
     await showBanner(page, "1/5: Canlı Sistem ve Veritabanı Bağlantısı Kontrol Edildi", "🟢");

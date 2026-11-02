@@ -14,17 +14,22 @@ import {
   Alert,
   CircularProgress,
   Chip,
-  Divider,
 } from "@mui/material";
 import { TestPlanResult, TestCase } from "../types";
 import { api } from "../services/api";
-import { cleanTitle } from "../utils/titleCleaner";
+import {
+  cleanTitle,
+  cleanStepText,
+  cleanOverview,
+  deduplicateSteps,
+} from "../utils/titleCleaner";
 
 interface TestEditViewProps {
   plan: TestPlanResult;
   onBack: () => void;
   onSaveSuccess: (updatedPlan: TestPlanResult) => void;
   onGoToExecute: (updatedPlan: TestPlanResult) => void;
+  isAdmin?: boolean;
 }
 
 export const TestEditView: React.FC<TestEditViewProps> = ({
@@ -32,6 +37,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
   onBack,
   onSaveSuccess,
   onGoToExecute,
+  isAdmin = false,
 }) => {
   const formatPriority = (priority: string = "") => {
     const match = priority.match(/\((.*?)\)/);
@@ -39,14 +45,17 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
     return priority.replace(/^P\d+\s*-?\s*/i, "").trim() || priority;
   };
 
-  const [title, setTitle] = useState(plan.title);
-  const [category, setCategory] = useState(plan.category);
-  const [overview, setOverview] = useState(plan.overview);
+  const [title, setTitle] = useState(() => cleanTitle(plan.title || "", isAdmin));
+  const [category, setCategory] = useState(plan.category || "code");
+  const [overview, setOverview] = useState(() => cleanOverview(plan.overview || "", isAdmin));
   const [testCases, setTestCases] = useState<TestCase[]>(() => {
     const parsed = JSON.parse(JSON.stringify(plan.testCases || []));
     return parsed.map((tc: TestCase) => ({
       ...tc,
-      title: cleanTitle(tc.title),
+      title: cleanTitle(tc.title || "", isAdmin),
+      preconditions: cleanStepText(tc.preconditions || "", isAdmin),
+      steps: deduplicateSteps((tc.steps || []).map((s: string) => cleanStepText(s, isAdmin))),
+      expectedResult: cleanStepText(tc.expectedResult || "", isAdmin),
       priority: formatPriority(tc.priority),
     }));
   });
@@ -363,7 +372,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
               <TextField
                 fullWidth
                 size="small"
-                label="Ön Koşul (Preconditions)"
+                label="Ön Koşul"
                 value={tc.preconditions}
                 onChange={(e) => handleUpdateTestCase(index, "preconditions", e.target.value)}
               />
@@ -418,7 +427,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                 multiline
                 rows={2}
                 size="small"
-                label="Beklenen Sonuç (Expected Result)"
+                label="Beklenen Sonuç"
                 value={tc.expectedResult}
                 onChange={(e) => handleUpdateTestCase(index, "expectedResult", e.target.value)}
               />
@@ -452,4 +461,3 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
     </Box>
   );
 };
-

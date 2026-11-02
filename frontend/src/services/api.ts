@@ -1,6 +1,6 @@
 import { TestPlanResult, AnalysisHistoryItem } from "../types";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:5001";
 
 export const api = {
   async checkHealth(): Promise<{ status: string; database?: string }> {
@@ -15,6 +15,7 @@ export const api = {
     previousContent: string;
     newContent: string;
     persona?: "qa" | "developer";
+    saveToDb?: boolean;
   }): Promise<TestPlanResult> {
     const res = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: "POST",
@@ -24,7 +25,77 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Test adımları oluşturulamadı.");
+      throw new Error((err as any).error || "Test adımları oluşturulamadı.");
+    }
+
+    return res.json();
+  },
+
+  /**
+   * QA Modu: Video ve fotoğrafları teker teker her saniyesini analiz eder,
+   * her saniyeyi inceleyerek detaylı test senaryoları üretir.
+   */
+  async analyzeMedia(payload: {
+    title: string;
+    category: string;
+    additionalNotes?: string;
+    selectedScopes?: string[];
+    customScopes?: Array<{ id: string; title: string; reason?: string; badge?: string }>;
+    files: Array<{
+      name: string;
+      mimeType: string;
+      base64Data?: string;
+      notes?: string;
+      durationSeconds?: number;
+      formattedDuration?: string;
+      width?: number;
+      height?: number;
+      aspectRatioLabel?: string;
+      secondBySecondTimeline?: any[];
+      sampledFrames?: Array<{
+        second: number;
+        timestamp: string;
+        base64Data: string;
+        mimeType: string;
+      }>;
+    }>;
+  }): Promise<TestPlanResult> {
+    const res = await fetch(`${API_BASE_URL}/api/analyze-media`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || "Video/fotoğraf analizi başarısız.");
+    }
+
+    return res.json();
+  },
+
+  async saveAnalysis(payload: {
+    id?: string;
+    title: string;
+    category?: string;
+    previousContent?: string;
+    newContent?: string;
+    overview?: string;
+    diffSummary?: string;
+    testCases: any[];
+    persona?: "qa" | "developer";
+    riskLevel?: string;
+    riskScore?: number;
+  }): Promise<AnalysisHistoryItem> {
+    const res = await fetch(`${API_BASE_URL}/api/analyses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err as any).error || "Test planı kaydedilemedi.");
     }
 
     return res.json();
@@ -68,7 +139,7 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Analiz güncellenemedi.");
+      throw new Error((err as any).error || "Analiz güncellenemedi.");
     }
     return res.json();
   },
@@ -88,7 +159,7 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || "Yapay zeka şablon üretemedi.");
+      throw new Error((err as any).error || "Yapay zeka şablon üretemedi.");
     }
 
     return res.json();

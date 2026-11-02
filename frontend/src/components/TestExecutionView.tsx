@@ -11,17 +11,19 @@ import {
   Checkbox,
   LinearProgress,
   TextField,
-  Tooltip,
-  Alert,
-  Divider,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
-import { cleanTitle } from "../utils/titleCleaner";
+import {
+  cleanTitle,
+  cleanStepText,
+  formatStepForDisplay,
+} from "../utils/titleCleaner";
 
 interface TestExecutionViewProps {
   plan: TestPlanResult;
   onBack: () => void;
   onGoToEdit: () => void;
+  isAdmin?: boolean;
 }
 
 type TestStatus = "pending" | "passed" | "failed" | "blocked";
@@ -38,7 +40,7 @@ interface ExecutionState {
 export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
   plan,
   onBack,
-  onGoToEdit,
+  isAdmin = false,
 }) => {
   const storageKey = `test_exec_${plan.id}`;
 
@@ -129,7 +131,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
 
   // Test Raporu Üret ve İndir
   const handleExportExecutionReport = () => {
-    let report = `# Test Koşum Raporu: ${plan.title}\n\n`;
+    let report = `# Test Koşum Raporu: ${cleanTitle(plan.title, isAdmin)}\n\n`;
     report += `**Tarih:** ${new Date().toLocaleString("tr-TR")}\n`;
     report += `**İlerleme:** %${progressPercent} (${executedCount}/${total} Test Tamamlandı)\n`;
     report += `- 🟢 **Başarılı (Passed):** ${passedCount}\n`;
@@ -149,7 +151,8 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
           ? "🟡 ENGELLENDİ"
           : "⚪ BEKLİYOR";
 
-      report += `### ${idx + 1}. [${tc.id}] ${cleanTitle(tc.title)} — ${statusIcon}\n`;
+      const cleanedTcTitle = cleanTitle(tc.title, isAdmin);
+      report += `### ${idx + 1}. ${tc.id}: ${cleanedTcTitle} — ${statusIcon}\n`;
       report += `- **Öncelik:** ${formatPriority(tc.priority)} | **Tür:** ${tc.type}\n`;
       report += `- **Tamamlanan Adım Sayısı:** ${state.completedSteps?.length || 0} / ${tc.steps.length}\n`;
       if (state.notes) report += `- **Test Notu / Hata:** ${state.notes}\n`;
@@ -238,7 +241,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                 <span style={{ fontSize: "1.6rem" }}>🚀</span>
                 <div>
                   <Typography variant="h5" sx={{ fontWeight: 800, color: "#f8fafc" }}>
-                    {plan.title} — Test Koşumu
+                    {cleanTitle(plan.title, isAdmin)} — Test Koşumu
                   </Typography>
                   <Typography variant="caption" sx={{ color: "#94a3b8" }}>
                     Test adımlarını doğrulayın, sonuçları işaretleyin ve koşum raporunu oluşturun.
@@ -369,7 +372,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                     sx={{ fontWeight: 800, backgroundColor: "rgba(99, 102, 241, 0.2)", color: "#818cf8" }}
                   />
                   <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#f8fafc" }}>
-                    {cleanTitle(tc.title)}
+                    {cleanTitle(tc.title, isAdmin)}
                   </Typography>
                 </Stack>
 
@@ -398,18 +401,19 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                   Ön Koşul:
                 </Typography>
                 <Typography variant="body2" sx={{ color: "#cbd5e1", fontSize: "0.85rem" }}>
-                  {tc.preconditions || "Özel bir ön koşul tanımlanmadı."}
+                  {cleanStepText(tc.preconditions || "Özel bir ön koşul tanımlanmadı.", isAdmin)}
                 </Typography>
               </Box>
 
               {/* Adımlar (Checklist) */}
               <Box sx={{ mb: 2 }}>
                 <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 700, display: "block", mb: 0.5 }}>
-                  Çalıştırılacak Test Adımları (Tamamladıkça işaretleyin):
+                  Çalıştırılacak Test Adımları:
                 </Typography>
                 <Stack spacing={0.5}>
-                  {tc.steps.map((step, sIdx) => {
+                  {tc.steps.map((rawStep, sIdx) => {
                     const isChecked = currentExec.completedSteps?.includes(sIdx);
+                    const formatted = formatStepForDisplay(rawStep, isAdmin);
                     return (
                       <Stack
                         key={sIdx}
@@ -433,6 +437,21 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                             "&.Mui-checked": { color: "#34d399" },
                           }}
                         />
+                        {formatted.timestamp && isAdmin && (
+                          <Chip
+                            label={`⏱ ${formatted.timestamp}`}
+                            size="small"
+                            sx={{
+                              fontSize: "0.68rem",
+                              height: 18,
+                              backgroundColor: "rgba(56, 189, 248, 0.15)",
+                              color: "#38bdf8",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                              fontWeight: 700,
+                              mr: 0.5,
+                            }}
+                          />
+                        )}
                         <Typography
                           variant="body2"
                           sx={{
@@ -442,7 +461,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                             lineHeight: 1.5,
                           }}
                         >
-                          {step}
+                          {formatted.text}
                         </Typography>
                       </Stack>
                     );
@@ -456,7 +475,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                   ✓ Beklenen Sonuç:
                 </Typography>
                 <Typography variant="body2" sx={{ color: "#a7f3d0", fontSize: "0.85rem" }}>
-                  {tc.expectedResult}
+                  {cleanStepText(tc.expectedResult || "", isAdmin)}
                 </Typography>
               </Box>
 
@@ -537,4 +556,3 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
     </Box>
   );
 };
-

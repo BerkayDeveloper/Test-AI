@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
 import { generateUniversalTestPlan } from "../services/testPlanGenerator";
 import { dbService } from "../services/dbService";
-import { cleanTitle } from "../utils/titleCleaner";
+import { cleanTitle, cleanTestCase, cleanStepText } from "../utils/titleCleaner";
 
 export const analysisController = {
   // POST /api/analyze
   async analyzeChange(req: Request, res: Response) {
     try {
-      const { title, category, previousContent, newContent, persona } = req.body;
+      const { title, category, previousContent, newContent, persona, saveToDb } = req.body;
 
       if (!title || typeof title !== "string" || title.trim().length === 0) {
         return res.status(400).json({ error: "Lütfen bir değişiklik veya görev başlığı girin." });
@@ -24,44 +24,141 @@ export const analysisController = {
 
       // Test Adımları Motorunu Çalıştır
       const testPlan = generateUniversalTestPlan(title, safeCategory, safeOldText, safeNewText, safePersona);
-      testPlan.testCases = testPlan.testCases.map((tc) => ({
-        ...tc,
-        title: cleanTitle(tc.title),
-      }));
+      testPlan.testCases = testPlan.testCases.map((tc) => cleanTestCase(tc, true));
 
-      // Veritabanına kaydet (previousContent ve newContent TAM OLARAK saklanır)
       const id = `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const riskLevel =
         testPlan.criticalTestCount >= 4 ? "CRITICAL" : testPlan.criticalTestCount >= 2 ? "HIGH" : "MEDIUM";
       const riskScore = Math.min(testPlan.criticalTestCount * 15 + 25, 95);
 
-      const saved = await dbService.createAnalysis({
+      // Yalnızca saveToDb açıkça true olarak gönderilmişse veritabanına otomatik ekle
+      if (saveToDb === true) {
+        const saved = await dbService.createAnalysis({
+          id,
+          title,
+          category: safeCategory,
+          previousContent: safeOldText,
+          newContent: safeNewText,
+          diffSummary: testPlan.overview,
+          riskLevel,
+          riskScore,
+          impactAreas: JSON.stringify(testPlan.testCases.map((t) => t.title)),
+          recommendations: JSON.stringify(testPlan.testCases),
+          persona: safePersona,
+        });
+
+        return res.json({
+          id: saved.id,
+          title,
+          category: safeCategory,
+          createdAt: saved.createdAt.toISOString(),
+          previousContent: safeOldText,
+          newContent: safeNewText,
+          persona: safePersona,
+          riskLevel,
+          riskScore,
+          ...testPlan,
+        });
+      }
+
+      // Varsayılan: Doğrudan test planlarına eklemeden önizleme için sonucu döndür
+      return res.json({
         id,
         title,
         category: safeCategory,
+        createdAt: new Date().toISOString(),
         previousContent: safeOldText,
         newContent: safeNewText,
-        diffSummary: testPlan.overview,
+        persona: safePersona,
         riskLevel,
         riskScore,
-        impactAreas: JSON.stringify(testPlan.testCases.map((t) => t.title)),
-        recommendations: JSON.stringify(testPlan.testCases),
-        persona: safePersona,
-      });
-
-      return res.json({
-        id: saved.id,
-        title,
-        category: safeCategory,
-        createdAt: saved.createdAt.toISOString(),
-        previousContent: safeOldText,
-        newContent: safeNewText,
-        persona: safePersona,
         ...testPlan,
       });
     } catch (error: any) {
       console.error("Test adımları üretim hatası:", error);
       return res.status(500).json({ error: "Test adımları üretilirken hata oluştu: " + error.message });
+    }
+  },
+
+  // POST /api/analyses (Oluşturulan test planını arşive/veritabanına kaydet)
+  async saveAnalysis(req: Request, res: Response) {
+    try {
+      const {
+        id,
+        title,
+        category,
+        previousContent,
+        newContent,
+        overview,
+        diffSummary,
+        testCases,
+        persona,
+        riskLevel: customRiskLevel,
+        riskScore: customRiskScore,
+      } = req.body;
+
+      if (!title || typeof title !== "string" || title.trim().length === 0) {
+        return res.status(400).json({ error: "Lütfen bir test planı başlığı girin." });
+      }
+
+      const safeId =
+        id && typeof id === "string" && id.trim().length > 0
+          ? id
+          : `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const safeOldText = typeof previousContent === "string" ? previousContent : "";
+      const safeNewText = typeof newContent === "string" ? newContent : "";
+      const safeCategory = typeof category === "string" && category.trim() ? category : "code";
+      const safePersona: "qa" | "developer" = persona === "developer" ? "developer" : "qa";
+      const cases = Array.isArray(testCases)
+        ? testCases.map((tc: any) => cleanTestCase(tc, true))
+        : [];
+
+      const criticalCount = cases.filter(
+        (t: any) =>
+          t.priority?.includes("Kritik") ||
+          t.priority?.includes("Yüksek") ||
+          t.priority?.includes("P1") ||
+          t.priority?.includes("P2")
+      ).length;
+
+      const riskLevel =
+        customRiskLevel || (criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM");
+      const riskScore = customRiskScore ?? Math.min(criticalCount * 15 + 25, 95);
+      const summary = diffSummary || overview || "Oluşturulan Test Planı";
+
+      const saved = await dbService.createAnalysis({
+        id: safeId,
+        title,
+        category: safeCategory,
+        previousContent: safeOldText,
+        newContent: safeNewText,
+        diffSummary: summary,
+        riskLevel,
+        riskScore,
+        impactAreas: JSON.stringify(cases.map((t: any) => cleanTitle(t.title || ""))),
+        recommendations: JSON.stringify(cases),
+        persona: safePersona,
+      });
+
+      return res.status(201).json({
+        id: saved.id,
+        title: saved.title,
+        category: saved.category,
+        diffSummary: saved.diffSummary,
+        overview: saved.diffSummary,
+        riskLevel: saved.riskLevel,
+        riskScore: saved.riskScore,
+        previousContent: saved.previousContent,
+        newContent: saved.newContent,
+        createdAt: saved.createdAt.toISOString(),
+        testCases: cases,
+        totalTestCount: cases.length,
+        criticalTestCount: criticalCount,
+        persona: saved.persona || safePersona,
+      });
+    } catch (error: any) {
+      console.error("Test planı kaydetme hatası:", error);
+      return res.status(500).json({ error: "Test planı kaydedilirken hata oluştu: " + error.message });
     }
   },
 
@@ -75,10 +172,7 @@ export const analysisController = {
           testCases = JSON.parse(r.recommendations);
         } catch {}
 
-        testCases = testCases.map((tc) => ({
-          ...tc,
-          title: cleanTitle(tc.title),
-        }));
+        testCases = testCases.map((tc) => cleanTestCase(tc, true));
 
         const impactAreas = testCases.map((t) => t.title);
 
@@ -106,9 +200,10 @@ export const analysisController = {
 
       // İsteğe bağlı query filtresi: /api/analyses?persona=qa
       const { persona } = req.query;
-      const result = persona && (persona === "qa" || persona === "developer")
-        ? formatted.filter((item) => item.persona === persona)
-        : formatted;
+      const result =
+        persona && (persona === "qa" || persona === "developer")
+          ? formatted.filter((item) => item.persona === persona)
+          : formatted;
 
       return res.json(result);
     } catch (error: any) {
@@ -132,10 +227,7 @@ export const analysisController = {
         testCases = JSON.parse(record.recommendations);
       } catch {}
 
-      testCases = testCases.map((tc) => ({
-        ...tc,
-        title: cleanTitle(tc.title),
-      }));
+      testCases = testCases.map((tc) => cleanTestCase(tc, true));
 
       const resolvedPersona: "qa" | "developer" =
         record.persona ||
@@ -186,13 +278,16 @@ export const analysisController = {
       if (typeof diffSummary === "string") updateData.diffSummary = diffSummary;
 
       if (Array.isArray(testCases)) {
-        const cleanedCases = testCases.map((tc: any) => ({
-          ...tc,
-          title: cleanTitle(tc.title),
-        }));
+        const cleanedCases = testCases.map((tc: any) => cleanTestCase(tc, true));
         updateData.recommendations = JSON.stringify(cleanedCases);
         updateData.impactAreas = JSON.stringify(cleanedCases.map((t: any) => t.title || ""));
-        const criticalCount = cleanedCases.filter((t: any) => t.priority?.includes("Kritik") || t.priority?.includes("Yüksek") || t.priority?.includes("P1") || t.priority?.includes("P2")).length;
+        const criticalCount = cleanedCases.filter(
+          (t: any) =>
+            t.priority?.includes("Kritik") ||
+            t.priority?.includes("Yüksek") ||
+            t.priority?.includes("P1") ||
+            t.priority?.includes("P2")
+        ).length;
         updateData.riskLevel = criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM";
         updateData.riskScore = Math.min(criticalCount * 15 + 25, 95);
       }

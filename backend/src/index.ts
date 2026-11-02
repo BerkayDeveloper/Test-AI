@@ -19,9 +19,9 @@ app.use(cors({
   credentials: true,
 }));
 
-// Body Parser - Güvenli Boyut Sınırı (5MB)
-app.use(express.json({ limit: "5mb" }));
-app.use(express.urlencoded({ extended: true, limit: "5mb" }));
+// Body Parser - Video analizi için 200MB limit (çoklu video ve saniye kareleri için yeterli)
+app.use(express.json({ limit: "200mb" }));
+app.use(express.urlencoded({ extended: true, limit: "200mb" }));
 
 // Genel API İstek Sınırı (DDoS Koruması)
 app.use("/api", apiLimiter);

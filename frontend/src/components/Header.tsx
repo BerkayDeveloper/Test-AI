@@ -12,6 +12,12 @@ import {
   Button,
   CircularProgress,
   Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Alert,
 } from "@mui/material";
 
 export type PersonaMode = "qa" | "developer";
@@ -22,6 +28,10 @@ interface HeaderProps {
   onRetry?: () => void;
   activePersona?: PersonaMode;
   onPersonaChange?: (persona: PersonaMode) => void;
+  isAdmin?: boolean;
+  onToggleAdmin?: (status: boolean) => void;
+  adminDialogOpen?: boolean;
+  setAdminDialogOpen?: (open: boolean) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -30,8 +40,44 @@ export const Header: React.FC<HeaderProps> = ({
   onRetry,
   activePersona = "qa",
   onPersonaChange,
+  isAdmin = false,
+  onToggleAdmin,
+  adminDialogOpen = false,
+  setAdminDialogOpen,
 }) => {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
+
+  // Admin Modal Şifre ve Hata Durumu
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminError, setAdminError] = useState<string | null>(null);
+
+  const handleOpenAdminModal = () => {
+    setAdminPassword("");
+    setAdminError(null);
+    setAdminDialogOpen?.(true);
+  };
+
+  const handleCloseAdminModal = () => {
+    setAdminDialogOpen?.(false);
+    setAdminPassword("");
+    setAdminError(null);
+  };
+
+  const handleAdminLogin = () => {
+    const trimmed = adminPassword.trim();
+    // Desteklenen varsayılan şifreler: admin, admin123, 1234 veya boş geçiş
+    if (!trimmed || trimmed === "admin" || trimmed === "admin123" || trimmed === "1234") {
+      onToggleAdmin?.(true);
+      handleCloseAdminModal();
+    } else {
+      setAdminError("Geçersiz şifre! (Varsayılan şifre: admin)");
+    }
+  };
+
+  const handleAdminLogout = () => {
+    onToggleAdmin?.(false);
+    handleCloseAdminModal();
+  };
 
   // Genel sistem sağlık durumu belirleme
   let statusColor = "#10b981"; // varsayılan yeşil
@@ -115,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
           />
         </Typography>
 
-        {/* Sağ Üst Alan: QA / Developer Seçicisi ve Info İkonu */}
+        {/* Sağ Üst Alan: QA / Developer Seçicisi, Admin Butonu ve Info İkonu */}
         <Stack direction="row" spacing={1.5} alignItems="center">
           {/* Persona / Rol Seçim Butonları (QA & Developer) */}
           <Box
@@ -193,6 +239,43 @@ export const Header: React.FC<HeaderProps> = ({
               </Button>
             </Tooltip>
           </Box>
+
+          {/* Yönetici (Admin) Modu Butonu */}
+          <Tooltip title={isAdmin ? "👑 Yönetici (Admin) Yetkisi Aktif. Tıklayarak yönetici modundan çıkabilirsiniz." : "🛡️ Yönetici (Admin) Girişi: Saniye saniye video analiz ve sistem dökümlerine erişim sağlar."}>
+            <Button
+              size="small"
+              onClick={handleOpenAdminModal}
+              sx={{
+                px: 1.4,
+                py: 0.5,
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                textTransform: "none",
+                borderRadius: 2,
+                border: isAdmin ? "1px solid rgba(245, 158, 11, 0.6)" : "1px solid rgba(255, 255, 255, 0.15)",
+                ...(isAdmin
+                  ? {
+                      background: "linear-gradient(90deg, rgba(245, 158, 11, 0.25), rgba(217, 119, 6, 0.35))",
+                      color: "#fbbf24",
+                      boxShadow: "0 0 10px rgba(245, 158, 11, 0.3)",
+                      "&:hover": {
+                        background: "linear-gradient(90deg, rgba(245, 158, 11, 0.35), rgba(217, 119, 6, 0.45))",
+                      },
+                    }
+                  : {
+                      background: "rgba(15, 23, 42, 0.7)",
+                      color: "#94a3b8",
+                      "&:hover": {
+                        color: "#f1f5f9",
+                        background: "rgba(255, 255, 255, 0.08)",
+                        borderColor: "rgba(255, 255, 255, 0.3)",
+                      },
+                    }),
+              }}
+            >
+              {isAdmin ? "👑 Admin" : "🛡️ Admin Girişi"}
+            </Button>
+          </Tooltip>
 
           {/* Sağ Üst Info İkonu */}
           <Box>
@@ -386,6 +469,88 @@ export const Header: React.FC<HeaderProps> = ({
           </Box>
         </Stack>
       </Toolbar>
+
+      {/* Yönetici (Admin) Giriş & Yönetim Modalı */}
+      <Dialog
+        open={adminDialogOpen}
+        onClose={handleCloseAdminModal}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            background: "#0f172a",
+            border: isAdmin ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(99, 102, 241, 0.4)",
+            borderRadius: 3,
+            p: 1,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: isAdmin ? "#fbbf24" : "#f8fafc", display: "flex", alignItems: "center", gap: 1 }}>
+          <span>👑</span> {isAdmin ? "Yönetici (Admin) Modu Aktif" : "Yönetici (Admin) Girişi"}
+        </DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          {isAdmin ? (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Alert severity="info" sx={{ background: "rgba(245, 158, 11, 0.12)", color: "#fef3c7", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
+                Şu anda <b>Yönetici (Admin)</b> yetkisiyle işlem yapmaktasınız. Test planlarında yer alan <b>Saniye Saniye Video & Medya Analiz Bulguları</b> alanı size açıktır.
+              </Alert>
+              <Typography variant="body2" sx={{ color: "#94a3b8" }}>
+                Standart kullanıcı deneyimini test etmek veya yönetici yetkisini kaldırmak için aşağıdaki butonu kullanabilirsiniz.
+              </Typography>
+            </Stack>
+          ) : (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Typography variant="body2" sx={{ color: "#cbd5e1" }}>
+                Test planlarındaki <b>Saniye Saniye Video & Medya Analiz Bulguları</b> dökümü ve gelişmiş inceleme verileri yalnızca yöneticilere açıktır.
+              </Typography>
+              {adminError && <Alert severity="error">{adminError}</Alert>}
+              <TextField
+                fullWidth
+                size="small"
+                type="password"
+                label="Admin Şifresi"
+                placeholder="Varsayılan: admin"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAdminLogin();
+                }}
+                helperText="İpucu: Varsayılan şifre 'admin' veya doğrudan Giriş Yap butonuna basabilirsiniz."
+                autoFocus
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1 }}>
+          <Button onClick={handleCloseAdminModal} sx={{ color: "#94a3b8", textTransform: "none" }}>
+            Kapat
+          </Button>
+          {isAdmin ? (
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={handleAdminLogout}
+              sx={{ textTransform: "none", fontWeight: 700 }}
+            >
+              Standart Kullanıcıya Dön (Çıkış)
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              onClick={handleAdminLogin}
+              sx={{
+                background: "linear-gradient(90deg, #f59e0b, #d97706)",
+                color: "#ffffff",
+                fontWeight: 700,
+                textTransform: "none",
+                "&:hover": { background: "linear-gradient(90deg, #d97706, #b45309)" },
+              }}
+            >
+              Admin Olarak Giriş Yap
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
     </AppBar>
   );
 };

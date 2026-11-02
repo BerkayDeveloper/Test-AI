@@ -29,7 +29,7 @@ async function decompressFlate(data: Uint8Array): Promise<string | null> {
       // PDF FlateDecode genellikle zlib header'ı (78 9c, 78 01, 78 da) içerir
       const ds = new DecompressionStream("deflate");
       const writer = ds.writable.getWriter();
-      writer.write(data);
+      writer.write(data as unknown as BufferSource);
       writer.close();
       const reader = ds.readable.getReader();
       const chunks: Uint8Array[] = [];
@@ -55,7 +55,7 @@ async function decompressFlate(data: Uint8Array): Promise<string | null> {
         const writer = dsRaw.writable.getWriter();
         // Zlib başlığı (ilk 2 bayt) varsa atla
         const sliceData = data.length > 2 && data[0] === 0x78 ? data.slice(2) : data;
-        writer.write(sliceData);
+        writer.write(sliceData as unknown as BufferSource);
         writer.close();
         const reader = dsRaw.readable.getReader();
         const chunks: Uint8Array[] = [];

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -27,6 +27,8 @@ import { TemplateSelector } from "./TemplateSelector";
 import { DiffViewer } from "./DiffViewer";
 import { TemplateItem } from "../types";
 import { parseDocument, ParsedDocumentResult } from "../utils/documentParser";
+import { analyzeVideoSecondBySecond, analyzeImageFile, ExtractedMediaTelemetry } from "../utils/videoFrameAnalyzer";
+import { detectScopesFromMediaTelemetry, DynamicTestScopeOption } from "../utils/dynamicScopeDetector";
 import { api } from "../services/api";
 
 const InfoIcon = () => (
@@ -42,16 +44,6 @@ const UploadIcon = () => (
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
     <polyline points="17 8 12 3 7 8"></polyline>
     <line x1="12" y1="3" x2="12" y2="15"></line>
-  </svg>
-);
-
-const FileIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle" }}>
-    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-    <polyline points="14 2 14 8 20 8"></polyline>
-    <line x1="16" y1="13" x2="8" y2="13"></line>
-    <line x1="16" y1="17" x2="8" y2="17"></line>
-    <polyline points="10 9 9 9 8 9"></polyline>
   </svg>
 );
 
@@ -178,6 +170,8 @@ interface CodeInputSectionProps {
   onSaveDraft?: () => void;
   onClearDraft?: () => void;
   activePersona?: "qa" | "developer";
+  showAutoSaveArea?: boolean;
+  onMediaAnalysisResult?: (result: any) => void;
 }
 
 // Varsayılan Kategoriler
@@ -223,9 +217,10 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   isOffline,
   lastSaved,
   draftRestored,
-  onSaveDraft,
   onClearDraft,
   activePersona = "qa",
+  showAutoSaveArea = true,
+  onMediaAnalysisResult,
 }) => {
   const isQa = activePersona === "qa";
   // Giriş Modu: 0 = İlk Sekme (Developer modunda Kod Karşılaştırma, QA modunda Video & Fotoğraf), 1 = Doğrudan Prompt / Metin, 2 = Belge / Dosya Yükleme (PDF, Word, Kod)
@@ -330,12 +325,125 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
     type: "image" | "video";
     previewUrl: string;
     note?: string;
+    telemetry?: ExtractedMediaTelemetry;
+    base64Data?: string;
   }
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [mediaNotes, setMediaNotes] = useState("");
+  const [mediaAnalyzing, setMediaAnalyzing] = useState(false);
+  const [mediaAnalysisProgress, setMediaAnalysisProgress] = useState<string | null>(null);
+  const [dynamicScopes, setDynamicScopes] = useState<DynamicTestScopeOption[]>([]);
+  const [isScanningMedias, setIsScanningMedias] = useState(false);
+  const [scanStatusMessage, setScanStatusMessage] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
 
-  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Yeni Özel Test Kapsamı Ekleme State'i
+  const [customScopeDialogOpen, setCustomScopeDialogOpen] = useState(false);
+  const [newScopeTitle, setNewScopeTitle] = useState("");
+  const [newScopeReason, setNewScopeReason] = useState("");
+
+  const handleAddCustomScope = () => {
+    const trimmedTitle = newScopeTitle.trim();
+    if (!trimmedTitle) return;
+
+    const newScope: DynamicTestScopeOption = {
+      id: `custom_scope_${Date.now()}`,
+      title: trimmedTitle,
+      reason: newScopeReason.trim() || "Kullanıcı tarafından özel olarak tanımlanan test kapsamı ve hata beklentisi.",
+      icon: "✨",
+      badge: "Özel Kapsam",
+      selected: true,
+      isCustom: true,
+    };
+    setDynamicScopes((prev) => [newScope, ...prev]);
+    setNewScopeTitle("");
+    setNewScopeReason("");
+    setCustomScopeDialogOpen(false);
+  };
+
+  const handleRemoveCustomScope = (scopeId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDynamicScopes((prev) => prev.filter((s) => s.id !== scopeId));
+  };
+
+  // Video ve Fotoğraf Açma / Oynatma Önizleme Modal State'i
+  const [previewMediaIndex, setPreviewMediaIndex] = useState<number | null>(null);
+  const [imageZoomLevel, setImageZoomLevel] = useState<number>(1);
+
+  const handleOpenMediaPreview = (index: number) => {
+    setPreviewMediaIndex(index);
+    setImageZoomLevel(1);
+  };
+
+  const handleCloseMediaPreview = () => {
+    setPreviewMediaIndex(null);
+    setImageZoomLevel(1);
+  };
+
+  const handleNextMediaPreview = () => {
+    if (previewMediaIndex !== null && previewMediaIndex < mediaList.length - 1) {
+      setPreviewMediaIndex(previewMediaIndex + 1);
+      setImageZoomLevel(1);
+    }
+  };
+
+  const handlePrevMediaPreview = () => {
+    if (previewMediaIndex !== null && previewMediaIndex > 0) {
+      setPreviewMediaIndex(previewMediaIndex - 1);
+      setImageZoomLevel(1);
+    }
+  };
+
+  useEffect(() => {
+    if (previewMediaIndex === null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleCloseMediaPreview();
+      } else if (e.key === "ArrowRight") {
+        handleNextMediaPreview();
+      } else if (e.key === "ArrowLeft") {
+        handlePrevMediaPreview();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewMediaIndex, mediaList.length]);
+
+  // Dinamik Test Kapsamını Hesapla (Her saniye yapılan analiz telemetrisine göre)
+  const recomputeScopes = (
+    items: MediaItem[],
+    cat: string = category,
+    notes: string = mediaNotes,
+    ttl: string = title
+  ) => {
+    if (!items || items.length === 0) {
+      setDynamicScopes([]);
+      return;
+    }
+    setDynamicScopes((prev) => {
+      const existingCustoms = prev.filter((s) => s.isCustom);
+      const scopes = detectScopesFromMediaTelemetry(
+        items.map((m) => ({ name: m.name, note: m.note, telemetry: m.telemetry })),
+        ttl,
+        cat,
+        notes,
+        existingCustoms
+      );
+      const prevMap = new Map(prev.map((p) => [p.id, p.selected]));
+      return scopes.map((s) => ({
+        ...s,
+        selected: prevMap.has(s.id) ? (prevMap.get(s.id) as boolean) : s.selected,
+      }));
+    });
+  };
+
+  useEffect(() => {
+    if (mediaList.length > 0 && !isScanningMedias) {
+      recomputeScopes(mediaList, category, mediaNotes, title);
+    }
+  }, [category, mediaNotes, title]);
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -363,25 +471,73 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
       });
     }
 
-    if (newItems.length > 0) {
-      setMediaList((prev) => [...prev, ...newItems]);
-      // Başlık boşsa ilk dosya adından öner
-      if (!title.trim()) {
-        const cleanName = newItems[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
-        setTitle(`${cleanName} QA İncelemesi`);
-      }
-      // Otomatik yeni içerik metnini güncelle
-      syncMediaContent([...mediaList, ...newItems], mediaNotes);
-    }
+    if (newItems.length === 0) return;
 
     // Reset input
     if (mediaInputRef.current) {
       mediaInputRef.current.value = "";
     }
+
+    const currentTotalItems = [...mediaList, ...newItems];
+    setMediaList(currentTotalItems);
+
+    let currentTitle = title;
+    if (!title.trim()) {
+      const cleanName = newItems[0].name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      currentTitle = `${cleanName} QA İncelemesi`;
+      setTitle(currentTitle);
+    }
+    syncMediaContent(currentTotalItems, mediaNotes);
+
+    // Medyalar eklendiğinde hemen her saniyesi taranır ve kapsam seçenekleri belirlenir
+    setIsScanningMedias(true);
+    setScanStatusMessage("Medyaların her saniyesi taranıyor ve özel test kapsamı belirleniyor...");
+
+    const updatedTotalItems = [...currentTotalItems];
+
+    for (let i = 0; i < newItems.length; i++) {
+      const item = newItems[i];
+      const globalIdx = mediaList.length + i;
+      try {
+        if (item.type === "video") {
+          setScanStatusMessage(
+            `🎬 Video ${globalIdx + 1}/${currentTotalItems.length} - ${item.name}: Her saniyesi taranıyor...`
+          );
+          const telemetry = await analyzeVideoSecondBySecond(item.file, (currSec, totalSec, ts) => {
+            setScanStatusMessage(
+              `🎬 Video ${globalIdx + 1}/${currentTotalItems.length} - ${item.name}: ${ts} saniyesi inceleniyor (${currSec}/${totalSec} sn)...`
+            );
+          });
+          item.telemetry = telemetry;
+        } else {
+          setScanStatusMessage(
+            `📷 Görsel ${globalIdx + 1}/${currentTotalItems.length} - ${item.name}: Ekran bileşenleri inceleniyor...`
+          );
+          const telemetry = await analyzeImageFile(item.file);
+          item.telemetry = telemetry;
+        }
+        updatedTotalItems[globalIdx] = { ...item };
+        setMediaList([...updatedTotalItems]);
+      } catch (err: any) {
+        console.warn(`[FrameScan] Medya ön analizi hatası (${item.name}):`, err);
+      }
+    }
+
+    recomputeScopes(updatedTotalItems, category, mediaNotes, currentTitle);
+    setIsScanningMedias(false);
+    setScanStatusMessage(null);
   };
 
   const handleRemoveMedia = (id: string) => {
     setMediaList((prev) => {
+      const idxToRemove = prev.findIndex((m) => m.id === id);
+      if (previewMediaIndex !== null) {
+        if (previewMediaIndex === idxToRemove) {
+          handleCloseMediaPreview();
+        } else if (previewMediaIndex > idxToRemove) {
+          setPreviewMediaIndex(previewMediaIndex - 1);
+        }
+      }
       const filtered = prev.filter((m) => {
         if (m.id === id) {
           URL.revokeObjectURL(m.previewUrl);
@@ -390,13 +546,14 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
         return true;
       });
       syncMediaContent(filtered, mediaNotes);
+      recomputeScopes(filtered, category, mediaNotes, title);
       return filtered;
     });
   };
 
   const syncMediaContent = (items: MediaItem[], notes: string) => {
     const summaryLines: string[] = [
-      `[QA Medya İncelemesi ve Test Talebi]`,
+      `QA Medya İncelemesi ve Test Talebi`,
       `Toplam Eklenen Medya Sayısı: ${items.length}`,
     ];
 
@@ -404,7 +561,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
       summaryLines.push("\nEklenen Ekran Görüntüleri ve Hata Videoları:");
       items.forEach((item, idx) => {
         summaryLines.push(
-          `${idx + 1}. [${item.type === "video" ? "VİDEO KAYDI" : "FOTOĞRAF / EKRAN GÖRÜNTÜSÜ"}] ${item.name} (${item.sizeFormatted})`
+          `${idx + 1}. ${item.type === "video" ? "Video Kaydı" : "Görsel veya Ekran Görüntüsü"}: ${item.name} - ${item.sizeFormatted}`
         );
       });
     }
@@ -413,7 +570,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
       summaryLines.push(`\nQA Test Notları ve Gözlemlenen Davranış:`);
       summaryLines.push(notes.trim());
     } else {
-      summaryLines.push(`\nQA Test Kapsamı: Kullanıcı arayüzü görsel doğrulaması, hata/regresyon tespiti ve ekran kayıtlarındaki beklenen kullanıcı adımları.`);
+      summaryLines.push(`\nQA Test Kapsamı: Kullanıcı arayüzü görsel doğrulaması, hata ve regresyon tespiti ve ekran kayıtlarındaki beklenen kullanıcı adımları.`);
     }
 
     const compiledText = summaryLines.join("\n");
@@ -424,6 +581,140 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
     setMediaNotes(val);
     syncMediaContent(mediaList, val);
   };
+
+  const handleMediaItemNoteChange = (id: string, noteVal: string) => {
+    setMediaList((prev) => {
+      const updated = prev.map((m) => (m.id === id ? { ...m, note: noteVal } : m));
+      syncMediaContent(updated, mediaNotes);
+      return updated;
+    });
+  };
+
+  // Video ve Fotoğraf Analizi: Her videoyu teker teker, her saniyesini kare kare analiz edip QA test adımları üretir
+  const handleMediaAnalysis = async () => {
+    if (mediaList.length === 0 && !mediaNotes.trim()) return;
+
+    setMediaAnalyzing(true);
+    setMediaAnalysisProgress("Medya dosyaları analize hazırlanıyor...");
+
+    try {
+      const filePayloads: Array<{
+        name: string;
+        mimeType: string;
+        base64Data?: string;
+        notes?: string;
+        durationSeconds?: number;
+        formattedDuration?: string;
+        width?: number;
+        height?: number;
+        aspectRatioLabel?: string;
+        secondBySecondTimeline?: any[];
+        sampledFrames?: Array<{
+          second: number;
+          timestamp: string;
+          base64Data: string;
+          mimeType: string;
+        }>;
+      }> = [];
+
+      for (let i = 0; i < mediaList.length; i++) {
+        const item = mediaList[i];
+        let telemetry = item.telemetry;
+
+        if (!telemetry) {
+          if (item.type === "video") {
+            setMediaAnalysisProgress(
+              `🎬 Video ${i + 1}/${mediaList.length} - ${item.name}: Saniye saniye kare analizi tamamlanıyor...`
+            );
+            telemetry = await analyzeVideoSecondBySecond(item.file);
+          } else {
+            setMediaAnalysisProgress(
+              `📷 Görsel ${i + 1}/${mediaList.length} - ${item.name}: Ekran bileşenleri analiz ediliyor...`
+            );
+            telemetry = await analyzeImageFile(item.file);
+          }
+          item.telemetry = telemetry;
+        }
+
+        let base64Data: string | undefined = item.base64Data;
+        if (!base64Data && item.file.size <= 15 * 1024 * 1024) {
+          base64Data = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const res = (e.target?.result as string) || "";
+              resolve(res.split(",")[1] || "");
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(item.file);
+          });
+          item.base64Data = base64Data;
+        }
+
+        filePayloads.push({
+          name: item.name,
+          mimeType: telemetry.mimeType,
+          base64Data,
+          notes: item.note || mediaNotes || undefined,
+          durationSeconds: telemetry.durationSeconds,
+          formattedDuration: telemetry.formattedDuration,
+          width: telemetry.width,
+          height: telemetry.height,
+          aspectRatioLabel: telemetry.aspectRatioLabel,
+          secondBySecondTimeline: telemetry.secondBySecondTimeline,
+          sampledFrames: telemetry.sampledFrames,
+        });
+      }
+
+      if (filePayloads.length === 0 && mediaNotes.trim()) {
+        onSubmit({ customNewContent: mediaNotes });
+        return;
+      }
+
+      const derivedTitle =
+        title.trim() ||
+        `${mediaList[0]?.name?.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ") || "Medya"} QA Video Test Analizi`;
+      if (!title.trim()) setTitle(derivedTitle);
+
+      const activeScopeIds = dynamicScopes.filter((s) => s.selected).map((s) => s.id);
+      const customScopesPayload = dynamicScopes
+        .filter((s) => s.selected && s.isCustom)
+        .map((s) => ({
+          id: s.id,
+          title: s.title,
+          reason: s.reason,
+          badge: s.badge,
+        }));
+
+      setMediaAnalysisProgress(
+        `🧠 ${filePayloads.length} medya ve ${activeScopeIds.length} özel test kapsamı doğrulanıyor, detaylı QA test adımları oluşturuluyor...`
+      );
+
+      const result = await api.analyzeMedia({
+        title: derivedTitle,
+        category: category || "functional",
+        additionalNotes: mediaNotes || undefined,
+        selectedScopes: activeScopeIds,
+        customScopes: customScopesPayload,
+        files: filePayloads,
+      });
+
+      setMediaAnalysisProgress(null);
+
+      if (onMediaAnalysisResult) {
+        onMediaAnalysisResult(result);
+      } else {
+        onSubmit({ customTitle: derivedTitle, customNewContent: mediaNotes || derivedTitle });
+      }
+    } catch (err: any) {
+      setMediaAnalysisProgress(null);
+      console.error("Medya analizi hatası:", err);
+      alert("Video analizi sırasında hata oluştu: " + (err.message || "Bilinmeyen hata"));
+    } finally {
+      setMediaAnalyzing(false);
+    }
+  };
+
+
 
   // Prompt Modu State
   const [promptText, setPromptText] = useState("");
@@ -688,7 +979,8 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
         )}
 
         {/* Otomatik Veri Koruma & Ctrl + S Bilgi Çubuğu */}
-        <Box
+        {showAutoSaveArea && (
+          <Box
           sx={{
             display: "flex",
             alignItems: "center",
@@ -745,6 +1037,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
             )}
           </Stack>
         </Box>
+        )}
 
         {/* Giriş Yöntemi / Formatı Seçim Sekmeleri */}
         <Paper
@@ -816,52 +1109,19 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
             value={category || "none"}
             onChange={(e) => setCategory(e.target.value)}
           >
-            {currentCategories.map((cat) => {
-              const canDelete = cat.value !== "none";
-              return (
-                <MenuItem
-                  key={cat.value}
-                  value={cat.value}
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    py: 1,
-                  }}
-                >
-                  <Box component="span" sx={{ fontWeight: 500, flex: 1, pr: 1, fontSize: "0.875rem" }}>
-                    {cat.label}
-                  </Box>
-                  {canDelete && (
-                    <Box
-                      component="span"
-                      role="button"
-                      aria-label="Bu türü kaldır"
-                      title="Bu türü kaldır"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        handleDeleteCategory(cat.value);
-                      }}
-                      sx={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        p: 0.5,
-                        borderRadius: "50%",
-                        color: "#ef4444",
-                        cursor: "pointer",
-                        "&:hover": {
-                          background: "rgba(239, 68, 68, 0.15)",
-                        },
-                      }}
-                    >
-                      <TrashIcon />
-                    </Box>
-                  )}
-                </MenuItem>
-              );
-            })}
+            {currentCategories.map((cat) => (
+              <MenuItem
+                key={cat.value}
+                value={cat.value}
+                sx={{
+                  py: 1,
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                }}
+              >
+                {cat.label}
+              </MenuItem>
+            ))}
           </TextField>
 
           <Tooltip title={`Yeni tür ekle veya mevcut türleri yönet/çıkar`}>
@@ -1112,6 +1372,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                     color="error"
                     onClick={(e) => {
                       e.stopPropagation();
+                      handleCloseMediaPreview();
                       mediaList.forEach((m) => URL.revokeObjectURL(m.previewUrl));
                       setMediaList([]);
                       syncMediaContent([], mediaNotes);
@@ -1123,83 +1384,482 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                 </Stack>
 
                 <Grid container spacing={1.5}>
-                  {mediaList.map((m) => (
-                    <Grid item xs={12} sm={6} key={m.id}>
+                  {mediaList.map((m, mIdx) => (
+                    <Grid item xs={12} key={m.id}>
                       <Paper
                         variant="outlined"
                         sx={{
-                          p: 1.2,
+                          p: 1.5,
                           borderRadius: 2,
-                          background: "rgba(15, 23, 42, 0.8)",
-                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          background: "rgba(15, 23, 42, 0.85)",
+                          border:
+                            m.type === "video"
+                              ? "1px solid rgba(6, 182, 212, 0.35)"
+                              : "1px solid rgba(255, 255, 255, 0.12)",
                           display: "flex",
-                          gap: 1.5,
-                          alignItems: "center",
-                          position: "relative",
+                          flexDirection: "column",
+                          gap: 1,
                         }}
                       >
-                        {m.type === "image" ? (
-                          <Box
-                            component="img"
-                            src={m.previewUrl}
-                            alt={m.name}
-                            sx={{
-                              width: 58,
-                              height: 58,
-                              objectFit: "cover",
-                              borderRadius: 1.5,
-                              border: "1px solid rgba(6, 182, 212, 0.3)",
-                              flexShrink: 0,
-                            }}
-                          />
-                        ) : (
-                          <Box
-                            sx={{
-                              width: 58,
-                              height: 58,
-                              borderRadius: 1.5,
-                              background: "rgba(99, 102, 241, 0.2)",
-                              border: "1px solid rgba(99, 102, 241, 0.4)",
-                              display: "flex",
-                              flexDirection: "column",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            <span style={{ fontSize: "1.4rem" }}>🎬</span>
-                            <span style={{ fontSize: "0.6rem", color: "#a5b4fc", fontWeight: 700 }}>VIDEO</span>
-                          </Box>
-                        )}
+                        <Box sx={{ display: "flex", gap: 1.5, alignItems: "center" }}>
+                          {/* Tıklanabilir ve İzlenebilir Önizleme Alanı */}
+                          <Tooltip title={m.type === "video" ? "Videoyu Aç ve İzle" : "Fotoğrafı Tam Boyut Aç"}>
+                            <Box
+                              onClick={() => handleOpenMediaPreview(mIdx)}
+                              sx={{
+                                position: "relative",
+                                cursor: "pointer",
+                                borderRadius: 1.5,
+                                overflow: "hidden",
+                                width: m.type === "video" ? 96 : 84,
+                                height: 58,
+                                flexShrink: 0,
+                                border:
+                                  m.type === "video"
+                                    ? "1px solid rgba(6, 182, 212, 0.45)"
+                                    : "1px solid rgba(99, 102, 241, 0.35)",
+                                backgroundColor: "#000",
+                                "&:hover .media-overlay": {
+                                  opacity: 1,
+                                },
+                                "&:hover img, &:hover video": {
+                                  transform: "scale(1.08)",
+                                },
+                              }}
+                            >
+                              {m.type === "image" ? (
+                                <Box
+                                  component="img"
+                                  src={m.previewUrl}
+                                  alt={m.name}
+                                  sx={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    transition: "transform 0.25s ease",
+                                  }}
+                                />
+                              ) : (
+                                <Box
+                                  component="video"
+                                  src={m.previewUrl}
+                                  muted
+                                  playsInline
+                                  preload="metadata"
+                                  sx={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "cover",
+                                    transition: "transform 0.25s ease",
+                                  }}
+                                />
+                              )}
 
-                        <Box sx={{ flex: 1, minWidth: 0 }}>
-                          <Typography
-                            variant="subtitle2"
-                            noWrap
-                            sx={{ fontWeight: 700, fontSize: "0.82rem", color: "#f1f5f9" }}
-                            title={m.name}
+                              {/* Hover Oynat / Aç Katmanı */}
+                              <Box
+                                className="media-overlay"
+                                sx={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  background: "rgba(10, 15, 30, 0.72)",
+                                  backdropFilter: "blur(2px)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  opacity: 0,
+                                  transition: "opacity 0.2s ease",
+                                  color: m.type === "video" ? "#38bdf8" : "#c7d2fe",
+                                }}
+                              >
+                                <span style={{ fontSize: "1.1rem", lineHeight: 1 }}>{m.type === "video" ? "▶" : "🔍"}</span>
+                                <Typography variant="caption" sx={{ fontSize: "0.62rem", fontWeight: 800, mt: 0.2 }}>
+                                  {m.type === "video" ? "İzle" : "Büyüt"}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Tooltip>
+
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.3 }}>
+                              <Chip
+                                size="small"
+                                label={m.type === "video" ? `🎬 Video ${mIdx + 1}` : `📷 Görsel ${mIdx + 1}`}
+                                sx={{
+                                  height: 20,
+                                  fontSize: "0.7rem",
+                                  fontWeight: 800,
+                                  background:
+                                    m.type === "video" ? "rgba(6, 182, 212, 0.2)" : "rgba(99, 102, 241, 0.2)",
+                                  color: m.type === "video" ? "#38bdf8" : "#a5b4fc",
+                                }}
+                              />
+                              <Typography
+                                variant="subtitle2"
+                                noWrap
+                                sx={{ fontWeight: 700, fontSize: "0.84rem", color: "#f1f5f9" }}
+                                title={m.name}
+                              >
+                                {m.name}
+                              </Typography>
+                            </Stack>
+                            <Typography variant="caption" sx={{ color: "#94a3b8", display: "block" }}>
+                              {m.type === "video"
+                                ? "Her saniyesi kare kare analiz edilecek"
+                                : "Ekran görüntüsü bileşenleri analiz edilecek"}{" "}
+                              • {m.sizeFormatted}
+                            </Typography>
+                          </Box>
+
+                          {/* Doğrudan Aç/İzle Butonu */}
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={() => handleOpenMediaPreview(mIdx)}
+                            sx={{
+                              textTransform: "none",
+                              fontSize: "0.75rem",
+                              fontWeight: 700,
+                              py: 0.5,
+                              px: 1.4,
+                              whiteSpace: "nowrap",
+                              background:
+                                m.type === "video"
+                                  ? "linear-gradient(90deg, #06b6d4, #0284c7)"
+                                  : "linear-gradient(90deg, #6366f1, #4f46e5)",
+                              color: "#ffffff",
+                              boxShadow:
+                                m.type === "video"
+                                  ? "0 0 10px rgba(6, 182, 212, 0.35)"
+                                  : "0 0 10px rgba(99, 102, 241, 0.35)",
+                              "&:hover": {
+                                background:
+                                  m.type === "video"
+                                    ? "linear-gradient(90deg, #0891b2, #0369a1)"
+                                    : "linear-gradient(90deg, #4f46e5, #4338ca)",
+                              },
+                            }}
                           >
-                            {m.name}
-                          </Typography>
-                          <Typography variant="caption" sx={{ color: "#94a3b8", display: "block" }}>
-                            {m.type === "video" ? "Video Kaydı" : "Fotoğraf / Ekran"} • {m.sizeFormatted}
-                          </Typography>
+                            {m.type === "video" ? "▶ Videoyu İzle" : "🔍 Fotoğrafı Aç"}
+                          </Button>
+
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemoveMedia(m.id)}
+                            title="Medyayı kaldır"
+                            sx={{ p: 0.5 }}
+                          >
+                            ✕
+                          </IconButton>
                         </Box>
 
-                        <IconButton
+                        <TextField
+                          fullWidth
                           size="small"
-                          color="error"
-                          onClick={() => handleRemoveMedia(m.id)}
-                          title="Medyayı kaldır"
-                          sx={{ p: 0.5 }}
-                        >
-                          ✕
-                        </IconButton>
+                          placeholder={`Bu ${m.type === "video" ? "video" : "görsel"} için özel QA notu / odaklanılacak nokta (isteğe bağlı)...`}
+                          value={m.note || ""}
+                          onChange={(e) => handleMediaItemNoteChange(m.id, e.target.value)}
+                          sx={{
+                            "& .MuiInputBase-root": {
+                              fontSize: "0.78rem",
+                              backgroundColor: "rgba(0,0,0,0.25)",
+                            },
+                            "& .MuiInputBase-input": {
+                              py: 0.6,
+                              px: 1,
+                            },
+                          }}
+                        />
                       </Paper>
                     </Grid>
                   ))}
                 </Grid>
               </Box>
+            )}
+
+            {/* ======================= VİDEO VE FOTOĞRAF OYNATMA / İZLEME MODAL DİALOGU ======================= */}
+            {previewMediaIndex !== null && mediaList[previewMediaIndex] && (
+              <Dialog
+                open={previewMediaIndex !== null}
+                onClose={handleCloseMediaPreview}
+                maxWidth="md"
+                fullWidth
+                PaperProps={{
+                  sx: {
+                    background: "rgba(10, 15, 30, 0.98)",
+                    backdropFilter: "blur(20px)",
+                    border:
+                      mediaList[previewMediaIndex].type === "video"
+                        ? "1px solid rgba(6, 182, 212, 0.45)"
+                        : "1px solid rgba(99, 102, 241, 0.45)",
+                    borderRadius: 3,
+                    boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8)",
+                    overflow: "hidden",
+                  },
+                }}
+              >
+                <DialogTitle
+                  sx={{
+                    p: 2,
+                    background: "rgba(15, 23, 42, 0.95)",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <Stack direction="row" spacing={1.2} alignItems="center" sx={{ minWidth: 0, pr: 2 }} flexWrap="wrap">
+                    <Chip
+                      size="small"
+                      label={
+                        mediaList[previewMediaIndex].type === "video"
+                          ? `🎬 Video ${previewMediaIndex + 1} / ${mediaList.length}`
+                          : `📷 Görsel ${previewMediaIndex + 1} / ${mediaList.length}`
+                      }
+                      sx={{
+                        fontWeight: 800,
+                        fontSize: "0.75rem",
+                        background:
+                          mediaList[previewMediaIndex].type === "video"
+                            ? "rgba(6, 182, 212, 0.25)"
+                            : "rgba(99, 102, 241, 0.25)",
+                        color:
+                          mediaList[previewMediaIndex].type === "video" ? "#38bdf8" : "#c7d2fe",
+                      }}
+                    />
+                    <Typography
+                      variant="subtitle1"
+                      noWrap
+                      sx={{ fontWeight: 800, color: "#f8fafc", fontSize: "0.95rem" }}
+                      title={mediaList[previewMediaIndex].name}
+                    >
+                      {mediaList[previewMediaIndex].name}
+                    </Typography>
+                    <Chip
+                      size="small"
+                      label={mediaList[previewMediaIndex].sizeFormatted}
+                      sx={{
+                        height: 20,
+                        fontSize: "0.7rem",
+                        background: "rgba(255, 255, 255, 0.06)",
+                        color: "#94a3b8",
+                      }}
+                    />
+                  </Stack>
+
+                  <IconButton
+                    size="small"
+                    onClick={handleCloseMediaPreview}
+                    sx={{
+                      color: "#94a3b8",
+                      backgroundColor: "rgba(255, 255, 255, 0.05)",
+                      "&:hover": { color: "#fff", backgroundColor: "rgba(239, 68, 68, 0.25)" },
+                    }}
+                  >
+                    ✕
+                  </IconButton>
+                </DialogTitle>
+
+                <DialogContent
+                  sx={{
+                    p: { xs: 1.5, sm: 2.5 },
+                    background: "#030712",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    minHeight: { xs: 280, sm: 420 },
+                  }}
+                >
+                  {mediaList[previewMediaIndex].type === "video" ? (
+                    <Box sx={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <Box
+                        component="video"
+                        key={mediaList[previewMediaIndex].previewUrl}
+                        src={mediaList[previewMediaIndex].previewUrl}
+                        controls
+                        autoPlay
+                        playsInline
+                        sx={{
+                          width: "100%",
+                          maxHeight: "68vh",
+                          borderRadius: 2,
+                          backgroundColor: "#000",
+                          boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                          border: "1px solid rgba(6, 182, 212, 0.3)",
+                          outline: "none",
+                        }}
+                      />
+                      <Typography variant="caption" sx={{ color: "#94a3b8", mt: 1, textAlign: "center" }}>
+                        💡 Video oynatıcının alt menüsünden tam ekran, oynatma hızı ve ses ayarlarını kontrol edebilirsiniz.
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Box
+                      sx={{
+                        width: "100%",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        overflow: "hidden",
+                        position: "relative",
+                      }}
+                    >
+                      {/* Zoom Kontrol Barı */}
+                      <Stack
+                        direction="row"
+                        spacing={1}
+                        alignItems="center"
+                        sx={{
+                          mb: 1.5,
+                          background: "rgba(15, 23, 42, 0.75)",
+                          p: 0.5,
+                          px: 1.5,
+                          borderRadius: 2,
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                        }}
+                      >
+                        <Button
+                          size="small"
+                          onClick={() => setImageZoomLevel((prev) => Math.max(0.5, prev - 0.25))}
+                          sx={{ minWidth: 32, textTransform: "none", color: "#cbd5e1" }}
+                        >
+                          🔍 -
+                        </Button>
+                        <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 700, minWidth: 46, textAlign: "center" }}>
+                          %{Math.round(imageZoomLevel * 100)}
+                        </Typography>
+                        <Button
+                          size="small"
+                          onClick={() => setImageZoomLevel((prev) => Math.min(3, prev + 0.25))}
+                          sx={{ minWidth: 32, textTransform: "none", color: "#cbd5e1" }}
+                        >
+                          🔍 +
+                        </Button>
+                        <Button
+                          size="small"
+                          onClick={() => setImageZoomLevel(1)}
+                          sx={{ textTransform: "none", fontSize: "0.74rem", color: "#94a3b8", ml: 1 }}
+                        >
+                          Sıfırla
+                        </Button>
+                      </Stack>
+
+                      <Box
+                        sx={{
+                          width: "100%",
+                          maxHeight: "68vh",
+                          overflow: "auto",
+                          display: "flex",
+                          justifyContent: "center",
+                          alignItems: "center",
+                          p: 1,
+                        }}
+                      >
+                        <Box
+                          component="img"
+                          src={mediaList[previewMediaIndex].previewUrl}
+                          alt={mediaList[previewMediaIndex].name}
+                          onClick={() => setImageZoomLevel((prev) => (prev === 1 ? 1.75 : 1))}
+                          sx={{
+                            maxWidth: imageZoomLevel === 1 ? "100%" : "none",
+                            maxHeight: imageZoomLevel === 1 ? "65vh" : "none",
+                            transform: imageZoomLevel !== 1 ? `scale(${imageZoomLevel})` : "none",
+                            transformOrigin: "center center",
+                            transition: "transform 0.2s ease-in-out",
+                            borderRadius: 2,
+                            cursor: imageZoomLevel === 1 ? "zoom-in" : "zoom-out",
+                            boxShadow: "0 10px 30px rgba(0, 0, 0, 0.6)",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                          }}
+                        />
+                      </Box>
+                    </Box>
+                  )}
+
+                  {/* Bu Medya İçin Özel QA Notu Girişi */}
+                  <Box sx={{ width: "100%", mt: 2, p: 1.5, background: "rgba(15, 23, 42, 0.7)", borderRadius: 2, border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                    <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 700, display: "block", mb: 0.5 }}>
+                      📝 Bu {mediaList[previewMediaIndex].type === "video" ? "Video" : "Görsel"} İçin Özel QA Notu:
+                    </Typography>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      placeholder="İzlediğiniz hata anını veya test adımında dikkat edilecek noktayı buraya not edebilirsiniz..."
+                      value={mediaList[previewMediaIndex].note || ""}
+                      onChange={(e) => handleMediaItemNoteChange(mediaList[previewMediaIndex].id, e.target.value)}
+                      sx={{
+                        "& .MuiInputBase-root": {
+                          fontSize: "0.82rem",
+                          backgroundColor: "rgba(0, 0, 0, 0.3)",
+                        },
+                      }}
+                    />
+                  </Box>
+                </DialogContent>
+
+                <DialogActions
+                  sx={{
+                    p: 2,
+                    background: "rgba(15, 23, 42, 0.95)",
+                    borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handlePrevMediaPreview}
+                      disabled={previewMediaIndex === 0}
+                      sx={{
+                        textTransform: "none",
+                        fontWeight: 700,
+                        color: "#cbd5e1",
+                        borderColor: "rgba(255, 255, 255, 0.15)",
+                        "&:hover": { borderColor: "#38bdf8", color: "#38bdf8" },
+                      }}
+                    >
+                      ← Önceki Medya
+                    </Button>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={handleNextMediaPreview}
+                      disabled={previewMediaIndex === mediaList.length - 1}
+                      sx={{
+                        textTransform: "none",
+                        fontWeight: 700,
+                        color: "#cbd5e1",
+                        borderColor: "rgba(255, 255, 255, 0.15)",
+                        "&:hover": { borderColor: "#38bdf8", color: "#38bdf8" },
+                      }}
+                    >
+                      Sonraki Medya →
+                    </Button>
+                  </Stack>
+
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={handleCloseMediaPreview}
+                    sx={{
+                      textTransform: "none",
+                      fontWeight: 700,
+                      px: 2.5,
+                      background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+                    }}
+                  >
+                    Kapat (ESC)
+                  </Button>
+                </DialogActions>
+              </Dialog>
             )}
 
             {/* QA Test Notu / Açıklama Alanı */}
@@ -1221,6 +1881,283 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                 },
               }}
             />
+
+            {/* Medyalar Saniye Saniye Taranırken Gösterilen Durum Kartı */}
+            {mediaList.length > 0 && isScanningMedias && (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2.2,
+                  mb: 2,
+                  borderRadius: 2.5,
+                  background: "rgba(6, 182, 212, 0.07)",
+                  border: "1px dashed #06b6d4",
+                  textAlign: "center",
+                }}
+              >
+                <Stack direction="row" spacing={1.5} alignItems="center" justifyContent="center">
+                  <CircularProgress size={20} sx={{ color: "#06b6d4" }} />
+                  <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.86rem" }}>
+                    {scanStatusMessage || "Medyaların her saniyesi taranıyor ve özel test kapsamı belirleniyor..."}
+                  </Typography>
+                </Stack>
+                <Typography variant="caption" sx={{ color: "#94a3b8", display: "block", mt: 0.8, fontSize: "0.75rem" }}>
+                  Yüklenen her video ve fotoğrafın saniyelik kareleri inceleniyor; açılır pencere, form, ekran geçişi, oyun mekaniği veya yapay zeka alanları tespit edilerek test kapsamı içeriğe özel hazırlanıyor.
+                </Typography>
+              </Paper>
+            )}
+
+            {/* Saniye Saniye Analizle Dinamik Tespit Edilen Ekstra Hata ve Fonksiyonel Test Kapsamı */}
+            {mediaList.length > 0 && !isScanningMedias && dynamicScopes.length > 0 && (
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  mb: 2,
+                  borderRadius: 2.5,
+                  background: "rgba(15, 23, 42, 0.85)",
+                  border: "1px solid rgba(6, 182, 212, 0.45)",
+                  boxShadow: "0 4px 20px rgba(6, 182, 212, 0.08)",
+                }}
+              >
+                <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 1.5 }}>
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <span style={{ fontSize: "1.2rem" }}>🎯</span>
+                    <Box>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 800, color: "#38bdf8", fontSize: "0.88rem" }}>
+                        Medyalar İçin Tespit Edilen Ekstra Hata ve Fonksiyonel Test Kapsamı
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: "#94a3b8", fontSize: "0.74rem" }}>
+                        Her saniye yapılan kare analizine göre özel belirlendi • {dynamicScopes.filter((s) => s.selected).length} / {dynamicScopes.length} Kapsam Aktif
+                      </Typography>
+                    </Box>
+                  </Stack>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={() => setCustomScopeDialogOpen(true)}
+                      sx={{
+                        textTransform: "none",
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        background: "linear-gradient(90deg, #06b6d4, #6366f1)",
+                        color: "#fff",
+                        px: 1.5,
+                        py: 0.3,
+                        borderRadius: 1.5,
+                        boxShadow: "0 2px 8px rgba(6, 182, 212, 0.3)",
+                        "&:hover": {
+                          background: "linear-gradient(90deg, #0891b2, #4f46e5)",
+                        },
+                      }}
+                    >
+                      ➕ Yeni Kapsam Ekle
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setDynamicScopes((prev) => prev.map((s) => ({ ...s, selected: true })))}
+                      sx={{ textTransform: "none", fontSize: "0.74rem", fontWeight: 700, color: "#38bdf8", py: 0.2 }}
+                    >
+                      Tümünü Seç
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setDynamicScopes((prev) => prev.map((s) => ({ ...s, selected: false })))}
+                      sx={{ textTransform: "none", fontSize: "0.74rem", fontWeight: 700, color: "#94a3b8", py: 0.2 }}
+                    >
+                      Tümünü Kaldır
+                    </Button>
+                  </Stack>
+                </Stack>
+
+                <Grid container spacing={1.2}>
+                  {dynamicScopes.map((scope) => {
+                    const isSel = scope.selected;
+                    return (
+                      <Grid item xs={12} sm={6} key={scope.id}>
+                        <Box
+                          onClick={() => {
+                            setDynamicScopes((prev) =>
+                              prev.map((s) => (s.id === scope.id ? { ...s, selected: !s.selected } : s))
+                            );
+                          }}
+                          sx={{
+                            p: 1.25,
+                            borderRadius: 2,
+                            cursor: "pointer",
+                            background: isSel ? "rgba(6, 182, 212, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                            border: isSel
+                              ? "1px solid rgba(6, 182, 212, 0.45)"
+                              : "1px solid rgba(255, 255, 255, 0.08)",
+                            transition: "all 0.2s ease-in-out",
+                            display: "flex",
+                            gap: 1.2,
+                            alignItems: "flex-start",
+                            "&:hover": {
+                              background: isSel ? "rgba(6, 182, 212, 0.18)" : "rgba(255, 255, 255, 0.05)",
+                              borderColor: isSel ? "#06b6d4" : "rgba(255, 255, 255, 0.2)",
+                            },
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            onChange={() => {}}
+                            style={{
+                              marginTop: 3,
+                              cursor: "pointer",
+                              accentColor: "#06b6d4",
+                              width: 16,
+                              height: 16,
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Stack direction="row" spacing={0.8} alignItems="center" sx={{ mb: 0.3 }} flexWrap="wrap">
+                              <span style={{ fontSize: "1rem" }}>{scope.icon}</span>
+                              <Typography
+                                variant="subtitle2"
+                                sx={{
+                                  fontWeight: 700,
+                                  fontSize: "0.8rem",
+                                  color: isSel ? "#f8fafc" : "#94a3b8",
+                                  flex: 1,
+                                }}
+                              >
+                                {scope.title}
+                              </Typography>
+                              {scope.isCustom && (
+                                <Tooltip title="Özel kapsamı kaldır">
+                                  <IconButton
+                                    size="small"
+                                    onClick={(e) => handleRemoveCustomScope(scope.id, e)}
+                                    sx={{
+                                      color: "#ef4444",
+                                      p: 0.3,
+                                      backgroundColor: "rgba(239, 68, 68, 0.1)",
+                                      "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.25)", color: "#f87171" },
+                                    }}
+                                  >
+                                    <span style={{ fontSize: "0.75rem", fontWeight: 800 }}>✕</span>
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Stack>
+                            <Chip
+                              size="small"
+                              label={scope.badge}
+                              sx={{
+                                height: 18,
+                                fontSize: "0.65rem",
+                                fontWeight: 700,
+                                mb: 0.5,
+                                background: isSel ? "rgba(6, 182, 212, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                                color: isSel ? "#67e8f9" : "#64748b",
+                              }}
+                            />
+                            <Typography
+                              variant="caption"
+                              sx={{
+                                color: isSel ? "#cbd5e1" : "#64748b",
+                                fontSize: "0.72rem",
+                                display: "block",
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              {scope.reason}
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </Paper>
+            )}
+
+            {/* Yeni Özel Test Kapsamı Ekleme Dialogu */}
+            <Dialog
+              open={customScopeDialogOpen}
+              onClose={() => setCustomScopeDialogOpen(false)}
+              maxWidth="sm"
+              fullWidth
+              PaperProps={{
+                sx: {
+                  background: "#0f172a",
+                  border: "1px solid rgba(6, 182, 212, 0.4)",
+                  borderRadius: 3,
+                  color: "#f8fafc",
+                },
+              }}
+            >
+              <DialogTitle
+                sx={{
+                  fontWeight: 800,
+                  fontSize: "1rem",
+                  color: "#38bdf8",
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  pb: 1.5,
+                }}
+              >
+                ✨ Yeni Ekstra Hata ve Fonksiyonel Kapsam Ekle
+              </DialogTitle>
+              <DialogContent sx={{ pt: 2.5 }}>
+                <Typography variant="body2" sx={{ color: "#94a3b8", mb: 2, fontSize: "0.82rem" }}>
+                  Yüklenen videolarda veya fotoğraflarda tespit edilmesini ve ayrıntılı test adımları üretilmesini istediğiniz özel bir senaryo, oyun mekaniği, animasyon veya hata beklentisi tanımlayın.
+                </Typography>
+                <Typography variant="caption" sx={{ color: "#cbd5e1", fontWeight: 700, display: "block", mb: 0.5 }}>
+                  Kapsam Başlığı:
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  placeholder="Örn: Envanter Doluluk Sınırı ve Eşya Kaybı Kontrolü"
+                  value={newScopeTitle}
+                  onChange={(e) => setNewScopeTitle(e.target.value)}
+                  sx={{
+                    mb: 2,
+                    "& .MuiInputBase-root": { backgroundColor: "rgba(0,0,0,0.3)", color: "#f8fafc" },
+                  }}
+                />
+                <Typography variant="caption" sx={{ color: "#cbd5e1", fontWeight: 700, display: "block", mb: 0.5 }}>
+                  Test Edilecek Hata veya Fonksiyonel Beklenti:
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  placeholder="Örn: Envanter tamamen doluyken yeni eşya alındığında arayüz uyarısı çıkmalı, eşya yere düşmeli veya geçici depoya aktarılmalıdır; karakter hareketi kilitlenmemelidir."
+                  value={newScopeReason}
+                  onChange={(e) => setNewScopeReason(e.target.value)}
+                  sx={{
+                    "& .MuiInputBase-root": { backgroundColor: "rgba(0,0,0,0.3)", color: "#f8fafc" },
+                  }}
+                />
+              </DialogContent>
+              <DialogActions sx={{ p: 2, borderTop: "1px solid rgba(255,255,255,0.08)" }}>
+                <Button
+                  onClick={() => setCustomScopeDialogOpen(false)}
+                  sx={{ color: "#94a3b8", textTransform: "none", fontWeight: 700 }}
+                >
+                  İptal
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={handleAddCustomScope}
+                  disabled={!newScopeTitle.trim()}
+                  sx={{
+                    background: "linear-gradient(90deg, #06b6d4, #6366f1)",
+                    color: "#fff",
+                    textTransform: "none",
+                    fontWeight: 700,
+                    px: 2.5,
+                  }}
+                >
+                  Kapsamı Ekle
+                </Button>
+              </DialogActions>
+            </Dialog>
           </Box>
         )}
 
@@ -1590,7 +2527,28 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
           </Box>
         )}
 
-        {/* Hata Mesajı */}
+        {/* Video Analiz İlerleme Göstergesi */}
+        {mediaAnalyzing && mediaAnalysisProgress && (
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              borderRadius: 2,
+              background: "rgba(6, 182, 212, 0.08)",
+              border: "1px solid rgba(6, 182, 212, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              gap: 1.5,
+            }}
+          >
+            <CircularProgress size={16} sx={{ color: "#06b6d4", flexShrink: 0 }} />
+            <Typography variant="caption" sx={{ color: "#38bdf8", fontWeight: 600, lineHeight: 1.4 }}>
+              🎥 {mediaAnalysisProgress}
+            </Typography>
+          </Box>
+        )}
+
+                {/* Hata Mesajı */}
         {errorMsg && (
           <Alert severity="error" sx={{ mb: 2 }}>
             {errorMsg}
@@ -1614,12 +2572,17 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                 customNewContent: fileContent,
                 customPreviousContent: compareMode === "dual" ? fileOldContent : previousContent,
               });
+            } else if (isQa && inputMode === 0 && mediaList.length > 0) {
+              // QA Modu + Video/Fotoğraf: Gemini Vision analizi
+              handleMediaAnalysis();
             } else {
               onSubmit();
             }
           }}
           disabled={
             loading ||
+            mediaAnalyzing ||
+            isScanningMedias ||
             (inputMode === 1
               ? !promptText.trim()
               : inputMode === 2
@@ -1647,13 +2610,27 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
             transition: "all 0.3s ease",
           }}
         >
-          {loading ? (
+          {(loading || mediaAnalyzing || isScanningMedias) ? (
             <Stack direction="row" spacing={1} alignItems="center">
               <CircularProgress size={22} color="inherit" />
-              <span>{isQa ? "QA Senaryoları & E2E Test Adımları Oluşturuluyor..." : "Developer Unit & Kod Test Adımları Oluşturuluyor..."}</span>
+              <span style={{ fontSize: "0.88rem" }}>
+                {isScanningMedias
+                  ? "Medyalar saniye saniye taranıyor..."
+                  : mediaAnalyzing
+                  ? (mediaAnalysisProgress || "Video analiz ediliyor...")
+                  : isQa
+                  ? "QA Senaryoları ve Uçtan Uca Test Adımları Oluşturuluyor..."
+                  : "Geliştirici Birim ve Kod Test Adımları Oluşturuluyor..."}
+              </span>
             </Stack>
           ) : (
-            `✨ ${isQa ? "QA Test Adımlarını Oluştur" : "Developer Test Adımlarını Oluştur"}`
+            `✨ ${
+              isQa && inputMode === 0 && mediaList.length > 0
+                ? `Videoları Saniye Saniye Analiz Et ve Test Adımlarını Oluştur: ${mediaList.length} Medya`
+                : isQa
+                ? "QA Test Adımlarını Oluştur"
+                : "Geliştirici Test Adımlarını Oluştur"
+            }`
           )}
         </Button>
       </CardContent>

@@ -20,7 +20,12 @@ import {
   DialogActions,
 } from "@mui/material";
 import { AnalysisHistoryItem, TestPlanResult } from "../types";
-import { cleanTitle } from "../utils/titleCleaner";
+import {
+  cleanTitle,
+  cleanOverview,
+  cleanStepText,
+  deduplicateSteps,
+} from "../utils/titleCleaner";
 
 interface HistoryArchiveProps {
   history: AnalysisHistoryItem[];
@@ -30,6 +35,7 @@ interface HistoryArchiveProps {
   onDeletePlan: (id: string) => void;
   loading: boolean;
   activePersona?: "qa" | "developer";
+  isAdmin?: boolean;
 }
 
 export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
@@ -40,6 +46,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
   onDeletePlan,
   loading,
   activePersona,
+  isAdmin = false,
 }) => {
   const [search, setSearch] = useState("");
   // Silme Onay Modalı State'i (Silinmek istenen planın id ve title'ı)
@@ -52,7 +59,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
     ? safeHistory.filter((item) => {
         const itemPersona =
           item.persona ||
-          (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
+          (item.diffSummary?.includes("QA") || item.diffSummary?.includes("Tester")
             ? "qa"
             : "developer");
         return itemPersona === activePersona;
@@ -79,19 +86,22 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
     const rawCases = Array.isArray(item.testCases) ? item.testCases : [];
     const cases = rawCases.map((tc) => ({
       ...tc,
-      title: cleanTitle(tc.title),
+      title: cleanTitle(tc.title || "", isAdmin),
+      preconditions: cleanStepText(tc.preconditions || "", isAdmin),
+      steps: deduplicateSteps((tc.steps || []).map((s: string) => cleanStepText(s, isAdmin))),
+      expectedResult: cleanStepText(tc.expectedResult || "", isAdmin),
     }));
     const resolvedPersona =
       item.persona ||
-      (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
+      (item.diffSummary?.includes("QA") || item.diffSummary?.includes("Tester")
         ? "qa"
         : "developer");
 
     return {
       id: item.id,
-      title: item.title || "İsimsiz Test Planı",
+      title: cleanTitle(item.title || "İsimsiz Test Planı", isAdmin),
       category: item.category || "code",
-      overview: item.diffSummary || "",
+      overview: cleanOverview(item.diffSummary || "", isAdmin),
       totalTestCount: item.totalTestCount || cases.length,
       criticalTestCount: cases.filter(
         (t) => t?.priority?.includes("Kritik") || t?.priority?.includes("Yüksek") || t?.priority?.includes("P1") || t?.priority?.includes("P2")
@@ -153,6 +163,8 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
               const testCount = item.totalTestCount || cases.length || 0;
               const formattedDate = item.createdAt ? new Date(item.createdAt).toLocaleString("tr-TR") : "Bilinmiyor";
               const planResult = convertToTestPlanResult(item);
+              const displayTitle = cleanTitle(item.title || "", isAdmin);
+              const displaySummary = cleanOverview(item.diffSummary || "", isAdmin);
 
               return (
                 <Paper
@@ -177,7 +189,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
                   <Box sx={{ flex: 1, minWidth: 280 }}>
                     <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 0.5 }}>
                       <Typography variant="subtitle1" sx={{ fontWeight: 800, color: "#f8fafc" }}>
-                        {item.title}
+                        {displayTitle}
                       </Typography>
                       <Chip
                         size="small"
@@ -190,9 +202,9 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
                       Tarih: {formattedDate} • Toplam Test: {testCount}
                     </Typography>
 
-                    {item.diffSummary && (
+                    {displaySummary && (
                       <Typography variant="body2" sx={{ color: "#cbd5e1", mt: 1, fontSize: "0.86rem" }}>
-                        {item.diffSummary}
+                        {displaySummary}
                       </Typography>
                     )}
                   </Box>
@@ -218,12 +230,15 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
                       sx={{
                         textTransform: "none",
                         fontWeight: 700,
-                        color: "#93c5fd",
-                        borderColor: "rgba(147, 197, 253, 0.3)",
-                        "&:hover": { borderColor: "#60a5fa", background: "rgba(96, 165, 250, 0.1)" },
+                        color: "#38bdf8",
+                        borderColor: "rgba(56, 189, 248, 0.3)",
+                        "&:hover": {
+                          borderColor: "#38bdf8",
+                          backgroundColor: "rgba(56, 189, 248, 0.1)",
+                        },
                       }}
                     >
-                      🔍 İncele
+                      👁️ İncele
                     </Button>
 
                     {/* 2. Buton: Düzenle */}
@@ -234,9 +249,12 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
                       sx={{
                         textTransform: "none",
                         fontWeight: 700,
-                        color: "#06b6d4",
-                        borderColor: "rgba(6, 182, 212, 0.4)",
-                        "&:hover": { borderColor: "#06b6d4", background: "rgba(6, 182, 212, 0.1)" },
+                        color: "#fbbf24",
+                        borderColor: "rgba(251, 191, 36, 0.3)",
+                        "&:hover": {
+                          borderColor: "#fbbf24",
+                          backgroundColor: "rgba(251, 191, 36, 0.1)",
+                        },
                       }}
                     >
                       ✏️ Düzenle
@@ -251,20 +269,27 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
                         textTransform: "none",
                         fontWeight: 700,
                         background: "linear-gradient(90deg, #10b981, #06b6d4)",
-                        boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
-                        "&:hover": { background: "linear-gradient(90deg, #059669, #0891b2)" },
+                        color: "#fff",
                       }}
                     >
                       🚀 Test Etmeye Başla
                     </Button>
 
-                    {/* Sil Butonu: Tıklandığında Özel Onay Modalı Açılır */}
-                    <Tooltip title="Bu test planını sil">
+                    {/* 4. Buton: Sil */}
+                    <Tooltip title="Bu test planını arşivden sil">
                       <IconButton
                         size="small"
-                        onClick={() => setPlanToDelete({ id: item.id, title: item.title })}
-                        disabled={loading}
-                        sx={{ color: "#ef4444", "&:hover": { backgroundColor: "rgba(239, 68, 68, 0.1)" } }}
+                        color="error"
+                        onClick={() => setPlanToDelete({ id: item.id, title: displayTitle })}
+                        sx={{
+                          p: 0.8,
+                          border: "1px solid rgba(239, 68, 68, 0.2)",
+                          borderRadius: 1.5,
+                          "&:hover": {
+                            backgroundColor: "rgba(239, 68, 68, 0.1)",
+                            borderColor: "#ef4444",
+                          },
+                        }}
                       >
                         🗑️
                       </IconButton>
@@ -275,65 +300,46 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
             })}
           </Stack>
         )}
-
-        {/* ============================================================== */}
-        {/* SİLME ONAY UYARI MODALI (Ekran üzerinde açılan modern dialog)  */}
-        {/* ============================================================== */}
-        <Dialog
-          open={!!planToDelete}
-          onClose={() => setPlanToDelete(null)}
-          PaperProps={{
-            sx: {
-              background: "rgba(15, 23, 42, 0.95)",
-              border: "1px solid rgba(239, 68, 68, 0.3)",
-              backdropFilter: "blur(20px)",
-              borderRadius: 3,
-              p: 1,
-              maxWidth: 460,
-            },
-          }}
-        >
-          <DialogTitle sx={{ fontWeight: 800, color: "#f87171", display: "flex", alignItems: "center", gap: 1 }}>
-            <span style={{ fontSize: "1.4rem" }}>⚠️</span> Test Planını Silmek İstiyor Musunuz?
-          </DialogTitle>
-          <DialogContent>
-            <DialogContentText sx={{ color: "#cbd5e1", fontSize: "0.92rem", lineHeight: 1.6 }}>
-              <b style={{ color: "#f8fafc" }}>"{planToDelete?.title}"</b> başlıklı test planı ve oluşturulmuş olan tüm test adımları kalıcı olarak silinecektir.
-              <br /><br />
-              <span style={{ color: "#94a3b8", fontSize: "0.85rem" }}>
-                Bu işlem geri alınamaz. Silme işlemini onaylıyor musunuz?
-              </span>
-            </DialogContentText>
-          </DialogContent>
-          <DialogActions sx={{ p: 2, pt: 0, gap: 1 }}>
-            <Button
-              variant="outlined"
-              onClick={() => setPlanToDelete(null)}
-              sx={{
-                textTransform: "none",
-                color: "#94a3b8",
-                borderColor: "rgba(255, 255, 255, 0.15)",
-                "&:hover": { borderColor: "#cbd5e1", color: "#f1f5f9" },
-              }}
-            >
-              Vazgeç
-            </Button>
-            <Button
-              variant="contained"
-              color="error"
-              onClick={handleConfirmDelete}
-              sx={{
-                textTransform: "none",
-                fontWeight: 700,
-                background: "linear-gradient(90deg, #ef4444, #dc2626)",
-                boxShadow: "0 4px 12px rgba(239, 68, 68, 0.4)",
-              }}
-            >
-              🗑️ Evet, Test Planını Sil
-            </Button>
-          </DialogActions>
-        </Dialog>
       </CardContent>
+
+      {/* Silme Onay Dialogu */}
+      <Dialog
+        open={Boolean(planToDelete)}
+        onClose={() => setPlanToDelete(null)}
+        PaperProps={{
+          sx: {
+            background: "#0f172a",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            borderRadius: 2.5,
+            p: 1,
+          },
+        }}
+      >
+        <DialogTitle sx={{ fontWeight: 800, color: "#f87171" }}>
+          ⚠️ Test Planı Silinsin mi?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ color: "#cbd5e1" }}>
+            "<strong>{planToDelete?.title}</strong>" başlıklı test planı arşivden kalıcı olarak silinecektir. Bu işlem geri alınamaz.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setPlanToDelete(null)}
+            sx={{ color: "#94a3b8", textTransform: "none" }}
+          >
+            İptal
+          </Button>
+          <Button
+            onClick={handleConfirmDelete}
+            color="error"
+            variant="contained"
+            sx={{ textTransform: "none", fontWeight: 700 }}
+          >
+            Evet, Kalıcı Olarak Sil
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 };

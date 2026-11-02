@@ -1,6 +1,6 @@
 import { TestCase } from "../types";
 import { parseCodeEntities, detectLanguage, computeDiffStats } from "./codeAnalyzerService";
-import { cleanSubject, formatDirectiveTitle } from "../utils/titleCleaner";
+import { cleanSubject, formatDirectiveTitle, cleanStepText, cleanTestCase, cleanOverview } from "../utils/titleCleaner";
 
 export interface GeneratedPlan {
   overview: string;
@@ -54,6 +54,12 @@ function extractMeaningfulDirectives(docText: string): string[] {
 
   for (const raw of rawLines) {
     let clean = raw.trim();
+    // Köşeli parantezli meta başlık satırlarını tamamen filtrele (örn: [QA Hata Senaryosu ve Kullanıcı Davranışı])
+    if (/^\[.*\]$/.test(clean)) {
+      continue;
+    }
+    // Satır içindeki [QA ...] ve benzeri etiketleri temizle
+    clean = cleanStepText(clean);
     clean = clean.replace(/^(\d+[\.\)]|\*|-|•|adım\s*\d*:?|madde\s*\d*:?|gereksinim\s*\d*:?)\s*/i, "").trim();
 
     if (
@@ -70,9 +76,10 @@ function extractMeaningfulDirectives(docText: string): string[] {
 
   if (directives.length <= 1 && docText.length > 30) {
     const sentences = docText
+      .replace(/\[\s*(?:QA|Developer|Tester)?\s*[^\]]*(?:Senaryo|Davranış|Akış|Kriter|Test|Hata|Prompt)[^\]]*\]/gi, "")
       .split(/(?<=[.!?])\s+/)
-      .map((s) => s.trim())
-      .filter((s) => s.length > 12);
+      .map((s) => cleanStepText(s.trim()))
+      .filter((s) => s.length > 12 && !/^\[.*\]$/.test(s));
     return sentences;
   }
 
@@ -404,7 +411,8 @@ function generateQADocumentPlan(
   const lowerAll = (docText + " " + title).toLowerCase();
 
   // 1. QA POZİTİF UÇTAN UCA KULLANICI KABUL TESTİ (Happy Path User Journey)
-  const mainRule = directives[0] || title;
+  const cleanDoc = cleanStepText(docText);
+  const mainRule = cleanStepText(directives[0] || title);
   testCases.push({
     id: nextId(),
     targetComponent: "Uçtan Uca Kullanıcı Akışı (End-to-End User Flow)",
@@ -414,7 +422,7 @@ function generateQADocumentPlan(
     preconditions: `Uygulama test ortamında açık, geçerli test kullanıcısı/oturum açık ve gerekli ön veriler hazır olmalı.`,
     steps: [
       `Adım 1: Kullanıcı arayüzüne veya ilgili işlem ekranına giriş yapın.`,
-      `Adım 2: Dokümanda tanımlanan "${mainRule.slice(0, 70)}" senaryosu için geçerli ve standart tüm form alanlarını eksiksiz doldurun.`,
+      `Adım 2: Tanımlanan "${mainRule}" kuralı için geçerli ve standart tüm alanları eksiksiz doldurun.`,
       `Adım 3: İşlemi tetikleyen onay butonuna tıklayın (Submit/Onayla).`,
       `Adım 4: Ekranda beklenen başarı bildiriminin (Success toast, onay mesajı veya yönlendirme) net olarak görüntülendiğini doğrulayın.`,
       `Adım 5: Sayfayı yenileyerek veya listeleme ekranını kontrol ederek oluşturulan işlemin kalıcı şekilde kaydedildiğini teyit edin.`,
@@ -500,36 +508,36 @@ function generateQADocumentPlan(
     });
   }
 
-  // 4. QA KULLANICI DENEYİMİ, İPTAL VE ÇİFT TIKLAMA (Double Click) TESTİ
+  // 4. QA KULLANICI DENEYİMİ, İPTAL VE ÇİFT TIKLAMA TESTİ
   testCases.push({
     id: nextId(),
-    targetComponent: "Kullanıcı Deneyimi & Çift Tıklama Engeli (UX/Debounce)",
+    targetComponent: "Kullanıcı Deneyimi ve Çift Tıklama Engeli",
     title: "Çift Tıklama Engeli ve İşlem İptali Doğrulaması",
-    type: "Kullanıcı Deneyimi & Eşzamanlılık Testi (UX & Concurrency)",
+    type: "Kullanıcı Deneyimi ve Eşzamanlılık Testi",
     priority: "Yüksek",
     preconditions: "İlgili form doldurulmuş ve gönderme aşamasında olmalı.",
     steps: [
-      `Adım 1: '${title}' işlemini tetikleyen onay butonuna çok hızlı şekilde arka arkaya 2-3 kez tıklayın (Double-click abuse).`,
+      `Adım 1: '${title}' işlemini tetikleyen onay butonuna çok hızlı şekilde arka arkaya iki kez tıklayın.`,
       "Adım 2: İlk tıklamadan hemen sonra butonun disable/loading durumuna geçtiğini ve mükerrer istek gönderilmediğini doğrulayın.",
-      "Adım 3: İşlem devam ederken veya modal açıkken 'Vazgeç/İptal' butonuna tıklayarak akışın temiz şekilde sonlandığını ve verilerin bozulmadığını kontrol edin.",
+      "Adım 3: İşlem devam ederken veya modal açıkken Vazgeç veya İptal butonuna tıklayarak akışın temiz şekilde sonlandığını ve verilerin bozulmadığını kontrol edin.",
       "Adım 4: İşlem tamamlandıktan sonra formun sıfırlandığını ve tekrar aynı verilerin yanlışlıkla gönderilemeyeceğini test edin.",
     ],
     expectedResult: "Çift tıklamada mükerrer işlem oluşmaz; iptal senaryoları sorunsuz çalışır ve kullanıcı deneyimi kesintiye uğramaz.",
   });
 
-  // 5. QA REGRESYON VE SAHA KOŞULLARI TESTİ (Ağ kesintisi & Yenileme)
+  // 5. QA REGRESYON VE SAHA KOŞULLARI TESTİ
   testCases.push({
     id: nextId(),
-    targetComponent: "Ağ Toleransı & Sayfa Yenileme (Regression)",
+    targetComponent: "Ağ Toleransı ve Sayfa Yenileme",
     title: "Ağ Kesintisi ve Sayfa Yenilemede Veri Korunumu",
-    type: "Regresyon ve Hata Kurtarma Testi (Resilience)",
+    type: "Regresyon ve Hata Kurtarma Testi",
     priority: "Yüksek",
-    preconditions: "Tarayıcı Geliştirici Araçları (Network tab) açık olmalı.",
+    preconditions: "Tarayıcı geliştirici araçları ve ağ sekmesi açık olmalı.",
     steps: [
-      `Adım 1: '${title}' işlemi sırasında tarayıcıyı Offline (Çevrimdışı) moduna alın ve işlem yapmayı deneyin.`,
-      "Adım 2: Ekranda anlaşılır bir 'İnternet bağlantınızı kontrol edin' uyarısı çıktığını ve uygulamanın beyaz ekrana (Crash) düşmediğini doğrulayın.",
+      `Adım 1: '${title}' işlemi sırasında tarayıcıyı çevrimdışı moduna alın ve işlem yapmayı deneyin.`,
+      "Adım 2: Ekranda anlaşılır bir internet bağlantınızı kontrol edin uyarısı çıktığını ve uygulamanın çökmediğini doğrulayın.",
       "Adım 3: Ağ bağlantısını tekrar aktif edip işlemi tamamlayın.",
-      "Adım 4: İşlem tamamlandıktan sonra F5 (Sayfa Yenileme) yapın; verilerin kalıcı kaldığını ve arayüzün doğru başlangıç durumunda açıldığını teyit edin.",
+      "Adım 4: İşlem tamamlandıktan sonra sayfayı yeniden yükleyin; verilerin kalıcı kaldığını ve arayüzün doğru başlangıç durumunda açıldığını teyit edin.",
     ],
     expectedResult: "Ağ kesintilerinde kullanıcıya dostça hata verilir; sayfa yenilendiğinde hiçbir veri kaybı veya UI bozulması yaşanmaz.",
   });
@@ -669,17 +677,26 @@ export function generateUniversalTestPlan(
   const codeToAnalyze = newText && newText.trim().length > 0 ? newText : oldText;
   const isDoc = isDocumentOrPrompt(codeToAnalyze);
 
+  let plan: GeneratedPlan;
   // 1. QA PERSPEKTİFİ SEÇİLDİYSE:
   if (persona === "qa") {
     if (isDoc) {
-      return generateQADocumentPlan(title, category, codeToAnalyze, oldText);
+      plan = generateQADocumentPlan(title, category, codeToAnalyze, oldText);
+    } else {
+      plan = generateQACodePlan(title, category, codeToAnalyze, oldText);
     }
-    return generateQACodePlan(title, category, codeToAnalyze, oldText);
+  } else {
+    // 2. DEVELOPER PERSPEKTİFİ SEÇİLDİYSE:
+    if (isDoc) {
+      plan = generateDeveloperDocumentPlan(title, category, codeToAnalyze, oldText);
+    } else {
+      plan = generateDeveloperCodePlan(title, category, codeToAnalyze, oldText);
+    }
   }
 
-  // 2. DEVELOPER PERSPEKTİFİ SEÇİLDİYSE:
-  if (isDoc) {
-    return generateDeveloperDocumentPlan(title, category, codeToAnalyze, oldText);
-  }
-  return generateDeveloperCodePlan(title, category, codeToAnalyze, oldText);
+  return {
+    ...plan,
+    overview: cleanOverview(plan.overview),
+    testCases: plan.testCases.map((tc) => cleanTestCase(tc)),
+  };
 }

@@ -158,8 +158,7 @@ const DEFAULT_QA_TEMPLATES: TemplateItem[] = [
     title: "Mobil Giriş Ekranında Form Gönderim Hatası ve UI Donması",
     persona: "qa",
     oldCode: "",
-    newCode: `[QA Hata Senaryosu ve Kullanıcı Davranışı]
-1. Kullanıcı oturum açma ekranında telefon numarası ve şifresini girip 'Giriş Yap' butonuna arka arkaya çift tıklar.
+    newCode: `1. Kullanıcı oturum açma ekranında telefon numarası ve şifresini girip 'Giriş Yap' butonuna arka arkaya çift tıklar.
 2. Arayüzde hiçbir yükleniyor (spinner) animasyonu çıkmaz ve ekran 3 saniye yanıt vermez.
 3. Arka planda mükerrer istek gittiği için sunucu 429 Rate Limit hatası döner ancak ekranda genel sistem hatası toast'ı görüntülenir.
 4. Beklenen: İlk tıklamada buton disable olmalı, çift tıklama engellenmeli ve net hata mesajı gösterilmelidir.`,
@@ -170,8 +169,7 @@ const DEFAULT_QA_TEMPLATES: TemplateItem[] = [
     title: "Oyun Can Azalması, Hasar Efekti ve Checkpoint Doğrulaması",
     persona: "qa",
     oldCode: "",
-    newCode: `[QA Oyun Testi ve UX Akışı]
-1. Karakter düşman ateşi veya tuzakla karşılaştığında can barı (HUD) anlık olarak azalmalı ve kırmızı flaş hasar efekti çıkmalıdır.
+    newCode: `1. Karakter düşman ateşi veya tuzakla karşılaştığında can barı (HUD) anlık olarak azalmalı ve kırmızı flaş hasar efekti çıkmalıdır.
 2. Can 0 olduğunda 'Game Over' ekranı gelmeli ve karakter hareket kontrolleri kilitlenmelidir.
 3. 3 saniye sonra 'Yeniden Başla' butonu aktif olmalı ve son Checkpoint noktasında 100% canla doğmalıdır.
 4. Test: Ölüm anında oyunu duraklatıp (Esc) tekrar devam ettirildiğinde karakterin donup donmadığı doğrulanmalıdır.`,
@@ -182,8 +180,7 @@ const DEFAULT_QA_TEMPLATES: TemplateItem[] = [
     title: "Kupon Uygulama, Sepet İndirimi ve 3D Secure Akışı",
     persona: "qa",
     oldCode: "",
-    newCode: `[QA E2E Uçtan Uca Kabul Kriterleri]
-1. Sepette 250 TL ve üzeri ürün varken 'INDIRIM20' kuponu girildiğinde alt toplamda %20 indirim yansımalıdır.
+    newCode: `1. Sepette 250 TL ve üzeri ürün varken 'INDIRIM20' kuponu girildiğinde alt toplamda %20 indirim yansımalıdır.
 2. Sepetten bir ürün silinip tutar 250 TL altına düştüğünde kupon otomatik iptal edilmeli ve kullanıcıya bilgi verilmelidir.
 3. Ödeme butonuna tıklandığında banka 3D Secure modalı açılmalı ve SMS şifresi girildikten sonra sipariş onay ekranına yönlendirilmelidir.`,
   },
@@ -193,8 +190,7 @@ const DEFAULT_QA_TEMPLATES: TemplateItem[] = [
     title: "OTP SMS Doğrulama, Zaman Aşımı ve Hesap Güvenliği",
     persona: "qa",
     oldCode: "",
-    newCode: `[QA Güvenlik ve Negatif Test Akışı]
-1. SMS ile gelen 6 haneli kod için 3 dakikalık geri sayım sayacı doğru işlemelidir.
+    newCode: `1. SMS ile gelen 6 haneli kod için 3 dakikalık geri sayım sayacı doğru işlemelidir.
 2. 3 defa hatalı kod girildiğinde hesap 15 dakika kilitlenmeli ve ekranda kalan süre geri sayım olarak verilmelidir.
 3. Tarayıcıda 'Geri' butonuna tıklandığında yetkisiz panel açılmamalı ve oturum sonlandırılmalıdır.`,
   },
@@ -211,6 +207,16 @@ export default function App() {
   // Sayfa / Görünüm Durumu: "main" (Ana ekran sekmeleri) | "inspect" (İncele) | "edit" (Düzenle) | "execute" (Test Et)
   const [currentView, setCurrentView] = useState<"main" | "inspect" | "edit" | "execute">("main");
   const [activePlan, setActivePlan] = useState<TestPlanResult | null>(null);
+
+  // Yönetici (Admin) Yetkilendirme Durumu (LocalStorage ile kalıcı)
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("app_is_admin") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [adminDialogOpen, setAdminDialogOpen] = useState(false);
 
   // Kullanıcı özel şablonları
   const [customTemplates, setCustomTemplates] = useState<TemplateItem[]>(() => {
@@ -244,6 +250,7 @@ export default function App() {
     saveDraft,
     clearDraft,
     getInitialDraft,
+    showAutoSaveArea,
   } = useAutoSaveDraft(
     { title, category, previousContent, newContent, persona: activePersona },
     {
@@ -284,8 +291,9 @@ export default function App() {
     setSnackbarMsg("Taslak silindi, form sıfırlandı.");
   };
 
-  // Test Planı Sonucu
+  // Test Planı Sonucu State
   const [loading, setLoading] = useState(false);
+  const [savingPlan, setSavingPlan] = useState(false);
   const [testPlan, setTestPlan] = useState<TestPlanResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -385,6 +393,7 @@ export default function App() {
     setSnackbarMsg("Şablon silindi.");
   };
 
+  // Test Adımlarını Oluştur (Direkt Test Planlarına Eklemez, Önizleme Olarak Açar)
   const handleGenerateTests = async (customOverride?: {
     customTitle?: string;
     customNewContent?: string;
@@ -410,18 +419,127 @@ export default function App() {
         newContent: finalNew,
         persona: activePersona,
       });
-      setTestPlan(result);
-      loadHistory();
 
-      // Taslağı temizle
-      clearDraft();
+      // Oluşturulan test planını arşive/geçmişe eklemeden sadece ekranda önizleme olarak göster
+      setTestPlan({
+        ...result,
+        isSaved: false,
+      });
 
-      setSnackbarMsg("✨ Test adımları başarıyla oluşturuldu.");
+      setSnackbarMsg("✨ Test adımları başarıyla oluşturuldu. Önizlemeyi inceleyip 'Kaydet' butonuna basarak arşive ekleyebilirsiniz.");
     } catch (err: any) {
       setErrorMsg(err.message || "Test planı oluşturulurken hata meydana geldi.");
     } finally {
       setLoading(false);
     }
+  };
+
+
+  // QA Modu: Video & Fotoğraf Gemini Vision Analizi Sonucu (CodeInputSection'dan gelir)
+  const handleMediaAnalysisResult = (result: any) => {
+    setTestPlan({
+      ...result,
+      isSaved: false,
+    });
+    setSnackbarMsg("🎥 Video analizi tamamlandı! Test adımları oluşturuldu. Önizlemeyi inceleyip 'Kaydet' butonuyla arşive ekleyebilirsiniz.");
+  };
+
+  // Oluşturulan Test Planını Kaydetme (Veritabanına ve Test Planları Listesine Ekleme)
+  const handleSaveCurrentTestPlan = async () => {
+    if (!testPlan) return;
+    setSavingPlan(true);
+    try {
+      const saved = await api.saveAnalysis({
+        id: testPlan.id,
+        title: testPlan.title,
+        category: testPlan.category,
+        previousContent: testPlan.previousContent,
+        newContent: testPlan.newContent,
+        overview: testPlan.overview,
+        diffSummary: testPlan.overview,
+        testCases: testPlan.testCases,
+        persona: activePersona,
+        riskLevel: testPlan.riskLevel,
+        riskScore: testPlan.riskScore,
+      });
+
+      setTestPlan((prev) =>
+        prev
+          ? {
+              ...prev,
+              id: saved.id,
+              isSaved: true,
+            }
+          : null
+      );
+
+      await loadHistory();
+      clearDraft();
+      setSnackbarMsg("💾 Test planı başarıyla 'Test Planları' listesine kaydedildi.");
+    } catch (err: any) {
+      setSnackbarMsg("❌ Test planı kaydedilirken hata: " + err.message);
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  // Oluşturulan Test Planını Silme / Kaldırma
+  const handleDeleteCurrentTestPlan = async () => {
+    if (!testPlan) return;
+
+    if (testPlan.isSaved) {
+      const confirmDelete = window.confirm("Bu kayıtlı test planını silmek istediğinize emin misiniz?");
+      if (!confirmDelete) return;
+
+      try {
+        await api.deleteAnalysis(testPlan.id);
+        setHistory((prev) => prev.filter((item) => item.id !== testPlan.id));
+        setTestPlan(null);
+        setSnackbarMsg("🗑️ Test planı silindi ve arşivden kaldırıldı.");
+      } catch (err: any) {
+        setSnackbarMsg("❌ Silme hatası: " + err.message);
+      }
+    } else {
+      setTestPlan(null);
+      setSnackbarMsg("🗑️ Üretilen test planı silindi.");
+    }
+  };
+
+  // Plandan Tekil Test Senaryosu Silme
+  const handleDeleteTestCaseFromCurrentPlan = async (testCaseId: string) => {
+    if (!testPlan) return;
+
+    const remainingCases = testPlan.testCases.filter((tc) => tc.id !== testCaseId);
+    const criticalCount = remainingCases.filter(
+      (t) =>
+        t.priority?.includes("Kritik") ||
+        t.priority?.includes("Yüksek") ||
+        t.priority?.includes("P1") ||
+        t.priority?.includes("P2")
+    ).length;
+
+    const updatedPlan: TestPlanResult = {
+      ...testPlan,
+      testCases: remainingCases,
+      totalTestCount: remainingCases.length,
+      criticalTestCount: criticalCount,
+    };
+
+    setTestPlan(updatedPlan);
+
+    // Eğer plan zaten kaydedilmişse veritabanındaki kaydı da güncelle
+    if (testPlan.isSaved) {
+      try {
+        await api.updateAnalysis(testPlan.id, {
+          testCases: remainingCases,
+        });
+        await loadHistory();
+      } catch (err: any) {
+        console.warn("Otomatik güncelleme hatası:", err);
+      }
+    }
+
+    setSnackbarMsg("🗑️ Test senaryosu plandan çıkarıldı.");
   };
 
   // Mod Değiştiğinde Persona Senkronizasyonu & İzolasyonu
@@ -560,6 +678,16 @@ export default function App() {
           onRetry={checkHealth}
           activePersona={activePersona}
           onPersonaChange={handlePersonaChange}
+          isAdmin={isAdmin}
+          onToggleAdmin={(val) => {
+            setIsAdmin(val);
+            try {
+              localStorage.setItem("app_is_admin", val ? "true" : "false");
+            } catch {}
+            setSnackbarMsg(val ? "👑 Yönetici (Admin) Modu Aktifleştirildi." : "🛡️ Standart Kullanıcı Moduna Geçildi.");
+          }}
+          adminDialogOpen={adminDialogOpen}
+          setAdminDialogOpen={setAdminDialogOpen}
         />
 
         <Container maxWidth="xl" sx={{ mt: 4 }}>
@@ -572,6 +700,7 @@ export default function App() {
               onBack={handleBackToHistory}
               onGoToEdit={() => setCurrentView("edit")}
               onGoToExecute={() => setCurrentView("execute")}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -592,6 +721,7 @@ export default function App() {
                 loadHistory();
                 setCurrentView("execute");
               }}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -603,6 +733,7 @@ export default function App() {
               plan={activePlan}
               onBack={handleBackToHistory}
               onGoToEdit={() => setCurrentView("edit")}
+              isAdmin={isAdmin}
             />
           )}
 
@@ -641,6 +772,7 @@ export default function App() {
                       onOpenModal={() => setOpenModal(true)}
                       onDeleteCustomTemplate={handleDeleteCustomTemplate}
                       onSubmit={handleGenerateTests}
+                      onMediaAnalysisResult={handleMediaAnalysisResult}
                       loading={loading}
                       errorMsg={errorMsg}
                       hasResult={!!testPlan}
@@ -650,12 +782,22 @@ export default function App() {
                       onSaveDraft={saveDraft}
                       onClearDraft={handleClearDraft}
                       activePersona={activePersona}
+                      showAutoSaveArea={showAutoSaveArea}
                     />
                   </Grid>
 
                   {testPlan && (
                     <Grid item xs={12} lg={7.5}>
-                      <TestPlanView testPlan={testPlan} />
+                      <TestPlanView
+                        testPlan={testPlan}
+                        isSaved={testPlan.isSaved}
+                        saving={savingPlan}
+                        onSave={handleSaveCurrentTestPlan}
+                        onDelete={handleDeleteCurrentTestPlan}
+                        onDeleteTestCase={handleDeleteTestCaseFromCurrentPlan}
+                        isAdmin={isAdmin}
+                        onRequestAdminAccess={() => setAdminDialogOpen(true)}
+                      />
                     </Grid>
                   )}
                 </Grid>
@@ -671,6 +813,7 @@ export default function App() {
                   onDeletePlan={handleDeleteFromHistory}
                   loading={historyLoading}
                   activePersona={activePersona}
+                  isAdmin={isAdmin}
                 />
               )}
             </>

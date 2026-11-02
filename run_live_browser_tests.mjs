@@ -44,8 +44,8 @@ async function runLiveTest() {
     // -------------------------------------------------------------------------
     // 1. ADIM: Arayüze Bağlanma & Sistem Sağlık Kontrolü
     // -------------------------------------------------------------------------
-    logStep("ADIM 1", "http://localhost:3000 adresine bağlanılıyor...");
-    await page.goto("http://localhost:3000", { waitUntil: "networkidle0", timeout: 15000 });
+    logStep("ADIM 1", "http://localhost:3001 adresine bağlanılıyor...");
+    await page.goto("http://localhost:3001", { waitUntil: "networkidle0", timeout: 15000 });
     await delay(1000);
 
     const titleText = await page.title();

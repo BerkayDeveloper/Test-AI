@@ -10,8 +10,8 @@ Sistem **tamamen çalışır durumdadır** ve 3 ana bileşenden oluşmaktadır:
 
 | Servis | Teknoloji | Durum | Port / URL |
 | :--- | :--- | :---: | :--- |
-| **Frontend** | React 18, Vite 5, TypeScript, MUI | 🟢 Aktif | [http://localhost:3000](http://localhost:3000) |
-| **Backend** | Node.js, Express, TypeScript, Prisma | 🟢 Aktif | [http://localhost:4000](http://localhost:4000) (Sağlık: `/api/health`) |
+| **Frontend** | React 18, Vite 5, TypeScript, MUI | 🟢 Aktif | [http://localhost:3001](http://localhost:3001) |
+| **Backend** | Node.js, Express, TypeScript, Prisma | 🟢 Aktif | [http://localhost:5001](http://localhost:5001) (Sağlık: `/api/health`) |
 | **Veritabanı** | PostgreSQL 16 (Alpine) + Resilient In-Memory Fallback | 🟢 Aktif | `localhost:5432` |
 
 ---
@@ -32,8 +32,8 @@ Terminalinizi proje ana dizininde açın:
 docker compose up -d --build
 ```
 
-- Frontend: [http://localhost:3000](http://localhost:3000)
-- Backend API: [http://localhost:4000/api/health](http://localhost:4000/api/health)
+- Frontend: [http://localhost:3001](http://localhost:3001)
+- Backend API: [http://localhost:5001/api/health](http://localhost:5001/api/health)
 - PostgreSQL: `localhost:5432`
 
 Durdurmak için:
@@ -52,7 +52,7 @@ docker compose down
    npx prisma generate
    npm run dev
    ```
-   Backend `http://localhost:4000` adresinde açılır.
+   Backend `http://localhost:5001` adresinde açılır.
 
 2. **Frontend'i Başlatma:**
    ```powershell
@@ -60,7 +60,7 @@ docker compose down
    npm install
    npm run dev
    ```
-   Frontend `http://localhost:3000` adresinde açılır.
+   Frontend `http://localhost:3001` adresinde açılır.
 
 Frontend için: cd frontend ardından npm run build
 Backend için: cd backend ardından npm run build

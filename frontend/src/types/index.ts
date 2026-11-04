@@ -59,6 +59,8 @@ export interface TestPlanResult {
   riskScore?: number;
   isSaved?: boolean;
   videoInsights?: VideoInsightItem[];
+  accuracyScale?: number;
+  accuracyLabel?: string;
 }
 
 export interface TemplateItem {

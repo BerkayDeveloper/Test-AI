@@ -10,7 +10,7 @@ import {
   Paper,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
-import { cleanTitle, cleanStepText, cleanOverview, formatStepForDisplay } from "../utils/titleCleaner";
+import { cleanTitle, cleanStepText, cleanOverview, formatStepForDisplay, deduplicateSteps } from "../utils/titleCleaner";
 
 interface TestDetailViewProps {
   plan: TestPlanResult;
@@ -368,7 +368,7 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
                 Test Adımları:
               </Typography>
               <Stack spacing={0.8}>
-                {tc.steps.map((step, sIdx) => {
+                {deduplicateSteps(tc.steps).map((step, sIdx) => {
                   const stepInfo = formatStepForDisplay(step, isAdmin);
                   return (
                     <Box

@@ -55,6 +55,7 @@ export function detectScopesFromMediaTelemetry(
 
   // 2. Semantik metin ipuçlarını topla (kategori, özel notlar ve dosya adları)
   const allText = [
+    projectTitle,
     category,
     globalNotes,
     ...mediaItems.map((m) => `${m.name} ${m.note || ""}`),
@@ -433,6 +434,160 @@ export function detectScopesFromMediaTelemetry(
   }
 
   // 10. Kullanıcının manuel olarak eklediği özel kapsamları koru
+  if (Array.isArray(existingCustomScopes) && existingCustomScopes.length > 0) {
+    for (const customScope of existingCustomScopes) {
+      if (customScope.isCustom && !addedIds.has(customScope.id)) {
+        addedIds.add(customScope.id);
+        scopes.push(customScope);
+      }
+    }
+  }
+
+  return scopes;
+}
+
+/**
+ * Prompt, doğrudan metin veya PDF/dosya içeriklerini tarayarak
+ * ilgili test kapsamlarını dinamik olarak belirler.
+ */
+export function detectScopesFromTextContent(
+  textContent: string,
+  projectTitle: string = "",
+  category: string = "",
+  existingCustomScopes: DynamicTestScopeOption[] = []
+): DynamicTestScopeOption[] {
+  const combined = `${projectTitle} ${category} ${textContent}`.toLowerCase();
+  const scopes: DynamicTestScopeOption[] = [];
+  const addedIds = new Set<string>();
+
+  const addScope = (scope: Omit<DynamicTestScopeOption, "selected">, defaultSelected: boolean = true) => {
+    if (addedIds.has(scope.id)) return;
+    addedIds.add(scope.id);
+    scopes.push({
+      ...scope,
+      selected: defaultSelected,
+    });
+  };
+
+  // E-Ticaret / Ödeme
+  if (/(sepet|cart|odeme|checkout|siparis|kupon|fatura|tutar|fiyat|indirim|kart|kredi|pos)/i.test(combined)) {
+    addScope({
+      id: "scope_ecommerce_cart",
+      title: "Sepet Tutarı, Ürün Miktarı ve Kupon İndirimi Doğrulaması",
+      badge: "E-Ticaret ve Sepet Tespiti",
+      reason: "Metin içeriğinde sepet, tutar ve sipariş süreçleri tespit edildi. Tutar hesaplama ve indirim doğruluk testleri yapılacaktır.",
+      icon: "🛒",
+    });
+    addScope({
+      id: "scope_ecommerce_checkout",
+      title: "Ödeme Formu Bilgileri ve Kart Maskeleme Güvenlik Testi",
+      badge: "Ödeme Güvenliği Tespiti",
+      reason: "Ödeme ve işlem onay adımları için kart ve güvenlik verisi koruma testi.",
+      icon: "💳",
+    });
+    addScope({
+      id: "scope_double_click",
+      title: "Satın Al Butonuna Çift Tıklama ve Mükerrer Sipariş Engeli",
+      badge: "Mükerrer İstek Engeli",
+      reason: "Onay butonuna art arda basıldığında çift işlem oluşmaması test edilecektir.",
+      icon: "⚡",
+    });
+  }
+
+  // Giriş / Kimlik Doğrulama / Yetkilendirme
+  if (/(login|auth|giris|kayit|register|signup|sifre|password|token|jwt|session|oturum|otp|2fa)/i.test(combined)) {
+    addScope({
+      id: "scope_auth_security",
+      title: "Kimlik Doğrulama, Oturum Güvenliği ve Şifreleme Testi",
+      badge: "Oturum ve Yetki Tespiti",
+      reason: "Giriş, kayıt ve şifreleme süreçleri tespit edildi. Yetkisiz erişim ve güvenli çıkış senaryoları test edilecektir.",
+      icon: "🔐",
+    });
+    addScope({
+      id: "scope_form_security",
+      title: "Giriş Alanları Özel Karakter, SQL/XSS Enjeksiyon Filtreleme Testi",
+      badge: "Girdi Güvenliği Tespiti",
+      reason: "Kullanıcı girdi alanlarında zararlı karakter ve script enjeksiyon koruması test edilecektir.",
+      icon: "🛡️",
+    });
+  }
+
+  // Yapay Zeka / LLM
+  if (/(ai|llm|chat|sohbet|prompt|model|gemini|gpt|token|stream|yanit)/i.test(combined)) {
+    addScope({
+      id: "scope_ai_streaming",
+      title: "Yapay Zeka Yanıt Akışı, Boş Prompt ve Karakter Sınırı Kontrolü",
+      badge: "AI Modeli Tespiti",
+      reason: "Yapay zeka ve istem yönetimi tespit edildi. Akış kesintisi ve boş girdi senaryoları test edilecektir.",
+      icon: "🤖",
+    });
+    addScope({
+      id: "scope_ai_rate_limit",
+      title: "Hızlı Ardışık İstem ve Model Kotası Sınırlama Yönetimi",
+      badge: "Kota ve Rate Limit",
+      reason: "Model istek sınırları ve kota aşım bildirimleri test edilecektir.",
+      icon: "🚦",
+    });
+  }
+
+  // Oyun / Gameplay
+  if (/(oyun|game|karakter|character|can|health|hasar|damage|envanter|fizik|hud|skor)/i.test(combined)) {
+    addScope({
+      id: "scope_gameplay_collision",
+      title: "Karakter Çarpışma, Harita Sınırları ve Nesneye Gömülme Testi",
+      badge: "Oyun Fiziği Tespiti",
+      reason: "Oyun mekaniği tespit edildi. Çarpışma ve sınır aşımı testleri yapılacaktır.",
+      icon: "🎮",
+    });
+    addScope({
+      id: "scope_gameplay_health",
+      title: "Can Barı Azalması, Hasar Tepkisi ve Yeniden Doğma Doğrulaması",
+      badge: "Can Mekaniği Tespiti",
+      reason: "Karakter hasar alma ve can tükenmesi döngüsü test edilecektir.",
+      icon: "❤️",
+    });
+  }
+
+  // Veri Tablosu / Dashboard / Rapor
+  if (/(tablo|table|dashboard|rapor|istatistik|kpi|grafik|filtre|listeleme|export)/i.test(combined)) {
+    addScope({
+      id: "scope_dashboard_table",
+      title: "Veri Tablosu Sıralama, Filtreleme ve Sayfalama Testi",
+      badge: "Tablo Düzeni Tespiti",
+      reason: "Dinamik veri listeleme, kolon sıralama ve filtreleme testleri uygulanacaktır.",
+      icon: "📊",
+    });
+  }
+
+  // Genel Form ve Doğrulama
+  if (/(form|input|alan|zorunlu|validasyon|dogrulama|kaydet|guncelle)/i.test(combined) || scopes.length === 0) {
+    addScope({
+      id: "scope_form_validation",
+      title: "Zorunlu Alanlar, Hatalı Format ve Girdi Sınır Değer Testi",
+      badge: "Form Doğrulama Tespiti",
+      reason: "Arayüz formlarında boş bırakma, sınır değer ve hatalı format tepkileri test edilecektir.",
+      icon: "📝",
+    });
+  }
+
+  // Dayanıklılık ve Donma Koruması
+  addScope({
+    id: "scope_freeze_timeout",
+    title: "İşlem Esnasında Arayüz Donması ve Yükleniyor Göstergesi Doğrulaması",
+    badge: "Arayüz Kararlılık Tespiti",
+    reason: "Uzun süren veya asenkron işlemlerde arayüzün kilitlenmemesi ve kullanıcıya net gösterge sunulması test edilecektir.",
+    icon: "⏳",
+  });
+
+  addScope({
+    id: "scope_network_resilience",
+    title: "Ağ Kesintisi ve Sayfa Yenileme Dayanıklılık Testi",
+    badge: "Veri Kalıcılığı Tespiti",
+    reason: "Ağ kopması durumunda veri kaybı yaşanmaması ve net bağlantı uyarısı sunulması test edilecektir.",
+    icon: "🌐",
+  });
+
+  // Kullanıcı tarafından eklenen özel kapsamları koru
   if (Array.isArray(existingCustomScopes) && existingCustomScopes.length > 0) {
     for (const customScope of existingCustomScopes) {
       if (customScope.isCustom && !addedIds.has(customScope.id)) {

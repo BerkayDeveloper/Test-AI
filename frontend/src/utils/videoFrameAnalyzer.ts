@@ -454,7 +454,8 @@ export function computeVisualDomainSummary(
   const isMediaPlayerName = /\b(player|video|oynatici|stream|media|film|movie|youtube|netflix|muzik|audio)\b/i.test(fileNameLower);
 
   // 1. OYUN: Yüksek dinamik hareket + canlı doymuş renkler, köşe HUD'u veya oyun anahtar kelimesi
-  const isGame = isGameName || (isVideo && avgVivid > 22 && highMotionSeconds >= 2) || (hasCornerHudInFrames && avgVivid > 18);
+  const hasGameVisualPatterns = (isVideo && avgVivid > 14 && highMotionSeconds >= 1) || (hasCornerHudInFrames && avgVivid > 12) || timeline.some((t) => t.isDarkTheme && t.colorSaturation > 0.28);
+  const isGame = isGameName || hasGameVisualPatterns;
 
   // 2. YAPAY ZEKA: İstem barı tespiti veya yapay zeka anahtar kelimesi
   const isAiChat = isAiName || (!isGame && hasBottomInputInFrames && !isMediaPlayerName);
@@ -486,6 +487,152 @@ export function computeVisualDomainSummary(
     vividScore: Number(avgVivid.toFixed(1)),
     motionScore: Number(avgMotion.toFixed(1)),
   };
+}
+
+/**
+ * Videodaki veya görseldeki gerçek piksel telemetrisi, UI bileşenleri, yerleşim ve dosya bağlamına göre
+ * "Ekran 1", "Ekran 2" gibi genel ve belirsiz ifadeler yerine videoda gerçekten görünen ekranın içeriğine uygun,
+ * spesifik, işlevsel ve anlamlı ekran isimleri üretir.
+ */
+export function inferContentAwareScreenName(
+  metrics: RawFrameMetrics,
+  activeRegion: string,
+  eventType: SecondFrameAnalysis["eventType"],
+  fileName: string,
+  sec: number,
+  transitionCount: number,
+  prevScreenName?: string
+): string {
+  const fLow = (fileName || "").toLowerCase();
+
+  // 1. Modal / Açılır Pencere
+  if (metrics.modalOverlayDetected || eventType === "modal_open") {
+    if (metrics.redAlertScore > 1.2) {
+      return "Hata Bildirimi ve Uyarı Modal Penceresi";
+    }
+    if (metrics.greenSuccessScore > 1.2) {
+      return "İşlem Onay ve Başarı Modal Penceresi";
+    }
+    if (metrics.hasBottomInputBar || activeRegion.includes("Form") || activeRegion.includes("Merkez")) {
+      return "Açılır Form ve Bilgi Giriş Modal Diyaloğu";
+    }
+    return "Açılır İşlem Onay ve Bilgilendirme Modal Penceresi";
+  }
+
+  // 2. Oyun ve Gameplay Arayüzü
+  const isGameContext =
+    metrics.hasCornerHud ||
+    metrics.vividPixelsPercent > 20 ||
+    /\b(game|oyun|gameplay|unity|unreal|karakter|hasar|can|health|hud|fps|joystick|wasd)\b/i.test(fLow);
+
+  if (isGameContext) {
+    if (metrics.redAlertScore > 1.2) {
+      return "Karakter Hasar Alma ve Kritik Sağlık Görünümü";
+    }
+    if (metrics.greenSuccessScore > 1.2) {
+      return "Karakter İyileşme ve Can Tazeleme Sahnesi";
+    }
+    if (transitionCount > 0) {
+      return "Oyun İçi Görev ve Seviye İlerleme Sahnesi";
+    }
+    return "Oyun İçi Karakter HUD ve Oynanış Sahnesi";
+  }
+
+  // 3. Yapay Zeka & Sohbet
+  const isAiContext =
+    metrics.hasBottomInputBar ||
+    /\b(ai|chat|sohbet|prompt|bot|llm|istem|gemini|gpt)\b/i.test(fLow);
+
+  if (isAiContext) {
+    if (activeRegion.includes("Alt") || activeRegion.includes("Giriş")) {
+      return "Prompt ve Komut Giriş Paneli";
+    }
+    if (eventType === "scroll_or_animation" || activeRegion.includes("Merkez")) {
+      return "Yapay Zeka Yanıt Akışı ve Mesajlaşma Arayüzü";
+    }
+    return "Yapay Zeka Sohbet ve Komut Giriş Ekranı";
+  }
+
+  // 4. Veri Tablosu & Dashboard
+  const isTableContext =
+    metrics.hasTableGrid ||
+    /\b(table|tablo|dashboard|panel|grid|kpi|rapor|istatistik)\b/i.test(fLow);
+
+  if (isTableContext) {
+    if (activeRegion.includes("Üst") || activeRegion.includes("Filtre")) {
+      return "Tablo Filtreleme ve Arama Arayüzü";
+    }
+    if (metrics.edgeDensity > 18) {
+      return "Dinamik Veri Tablosu ve Kayıt Listeleme Ekranı";
+    }
+    return "Yönetim Kontrol Paneli ve İstatistik Grafikleri";
+  }
+
+  // 5. Medya Oynatıcı
+  const isPlayerContext =
+    metrics.hasPlayerSeekbar ||
+    /\b(player|video|oynatici|stream|media|seekbar)\b/i.test(fLow);
+
+  if (isPlayerContext) {
+    return "Medya Oynatıcı ve Oynatma Kontrolleri Ekranı";
+  }
+
+  // 6. E-Ticaret Sepet ve Ödeme
+  const isEcomContext =
+    /\b(cart|sepet|checkout|odeme|siparis|fatura|kupon|market|shop)\b/i.test(fLow);
+
+  if (isEcomContext) {
+    if (transitionCount > 0 || activeRegion.includes("Ödeme") || activeRegion.includes("Buton")) {
+      return "Teslimat Bilgileri ve Ödeme Tamamlama Formu";
+    }
+    return "Alışveriş Sepeti ve Sipariş Özeti Ekranı";
+  }
+
+  // 7. Kimlik Doğrulama / Kullanıcı Girişi
+  const isAuthContext =
+    /\b(login|auth|giris|signin|sign-in|register|kayit|signup|sign-up|otp|2fa|sifre|password)\b/i.test(fLow);
+
+  if (isAuthContext) {
+    if (fLow.includes("otp") || fLow.includes("2fa")) {
+      return "İki Adımlı SMS ve OTP Doğrulama Formu";
+    }
+    if (fLow.includes("register") || fLow.includes("kayit")) {
+      return "Kullanıcı Kayıt ve Hesap Oluşturma Formu";
+    }
+    if (transitionCount > 0) {
+      return "Giriş Sonrası Ana Karşılama Paneli";
+    }
+    return "Kullanıcı Girişi ve Kimlik Doğrulama Formu";
+  }
+
+  // 8. Genel Dinamik Ekran Ayrımı (Geçiş ve Bölge Bazlı Spesifik Tanımlama)
+  if (metrics.blankState !== "none") {
+    return metrics.blankState === "white_screen" ? "Beyaz Ekran Render Kesintisi" : "Siyah Ekran Yükleme Kesintisi";
+  }
+
+  const cleanBase = fileName ? fileName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ").trim() : "";
+
+  if (sec === 0) {
+    if (metrics.uiBlocksCount <= 4 && activeRegion.includes("Merkez")) {
+      return cleanBase ? `${cleanBase} Bilgi Giriş Formu` : "Merkezi Form ve Veri Giriş Ekranı";
+    }
+    if (metrics.edgeDensity > 16) {
+      return cleanBase ? `${cleanBase} Kontrol Paneli` : "Ana Kontrol Paneli ve Liste Arayüzü";
+    }
+    return cleanBase ? `${cleanBase} Başlangıç Arayüzü` : "Ana Karşılama ve Başlangıç Arayüzü";
+  }
+
+  if (transitionCount > 0) {
+    if (activeRegion.includes("Alt") || activeRegion.includes("Buton")) {
+      return cleanBase ? `${cleanBase} İşlem Onay ve Sonuç Paneli` : "İşlem Onay ve Sonuç Detay Paneli";
+    }
+    if (activeRegion.includes("Merkez") || activeRegion.includes("İçerik")) {
+      return cleanBase ? `${cleanBase} Detaylı Bilgi ve İçerik Ekranı` : "Detaylı Bilgi ve İçerik Yönetim Ekranı";
+    }
+    return cleanBase ? `${cleanBase} Detay Aşaması` : "İkincil İşlem ve Yönlendirme Arayüzü";
+  }
+
+  return prevScreenName || (cleanBase ? `${cleanBase} Kullanıcı Arayüzü` : "Ana Kullanıcı Arayüzü ve İşlem Paneli");
 }
 
 /**
@@ -537,16 +684,16 @@ export async function analyzeVideoSecondBySecond(
     const height = video.videoHeight || 720;
     const aspectRatioLabel = getAspectRatioLabel(width, height);
 
-    // Analiz canvas'ı (160x90 hızlı piksel & kenar analizi için)
+    // Analiz canvas'ı (320x180 yüksek hassasiyetli piksel & kenar analizi için)
     const analysisCanvas = document.createElement("canvas");
-    analysisCanvas.width = 160;
-    analysisCanvas.height = 90;
+    analysisCanvas.width = 320;
+    analysisCanvas.height = 180;
     const analysisCtx = analysisCanvas.getContext("2d", { willReadFrequently: true });
 
-    // Önizleme / Gemini Vision kare canvas'ı (480x270)
+    // Önizleme / Gemini Vision yüksek çözünürlüklü kare canvas'ı (960x540 HD)
     const thumbCanvas = document.createElement("canvas");
-    thumbCanvas.width = 480;
-    thumbCanvas.height = 270;
+    thumbCanvas.width = 960;
+    thumbCanvas.height = 540;
     const thumbCtx = thumbCanvas.getContext("2d");
 
     if (!analysisCtx || !thumbCtx) {
@@ -557,7 +704,8 @@ export async function analyzeVideoSecondBySecond(
     const sampledFrames: Array<{ second: number; timestamp: string; base64Data: string; mimeType: string }> = [];
 
     let prevMetrics: RawFrameMetrics | null = null;
-    let currentScreenIndex = 1;
+    let transitionCount = 0;
+    let currentScreenName = "";
     let consecutiveStaticSeconds = 0;
 
     for (let sec = 0; sec <= maxSec; sec++) {
@@ -584,8 +732,8 @@ export async function analyzeVideoSecondBySecond(
         }
       });
 
-      analysisCtx.drawImage(video, 0, 0, 160, 90);
-      const currMetrics = computeFrameMetrics(analysisCtx, 160, 90);
+      analysisCtx.drawImage(video, 0, 0, 320, 180);
+      const currMetrics = computeFrameMetrics(analysisCtx, 320, 180);
 
       let diffPercent = 0;
       let activeRegion = "Tam Ekran (Açılış Görünümü)";
@@ -604,29 +752,24 @@ export async function analyzeVideoSecondBySecond(
         consecutiveStaticSeconds = 0;
       }
 
-      // Ekran / Sahne Geçişi Tespiti
-      if (sec > 0 && diffPercent > 32) {
-        currentScreenIndex++;
-      }
-
       const prevRed = prevMetrics ? prevMetrics.redAlertScore : 0;
       const prevGreen = prevMetrics ? prevMetrics.greenSuccessScore : 0;
       const prevModal = prevMetrics ? prevMetrics.modalOverlayDetected : false;
 
       let eventType: SecondFrameAnalysis["eventType"] = "steady_state";
-      let screenName = `Ekran ${currentScreenIndex}`;
       let whatHappened = "";
       let qaCheckRequirement = "";
 
       if (sec === 0) {
         eventType = "initial_screen";
-        screenName = `Ekran 1 - Açılış Ekranı`;
-        whatHappened = `Video başlangıç ekranı yüklendi. ${
+        currentScreenName = inferContentAwareScreenName(currMetrics, activeRegion, eventType, file.name, 0, 0);
+        whatHappened = `${currentScreenName} başarıyla yüklendi. ${
           currMetrics.isDarkTheme ? "Koyu tema" : "Açık tema"
-        } düzeninde temel arayüz bileşenleri görünür durumda.`;
-        qaCheckRequirement = `Açılış ekranında tüm arayüz bileşenlerinin eksiksiz ve kayma olmadan yüklendiğini doğrulayın.`;
+        } düzeninde temel arayüz bileşenleri ve etkileşim alanları görünür durumda.`;
+        qaCheckRequirement = `${currentScreenName} üzerindeki tüm arayüz bileşenlerinin eksiksiz ve görsel kayma olmadan yüklendiğini doğrulayın.`;
       } else if (currMetrics.blankState !== "none") {
         eventType = "freeze_or_blank";
+        currentScreenName = inferContentAwareScreenName(currMetrics, activeRegion, eventType, file.name, sec, transitionCount, currentScreenName);
         whatHappened = `Ekranda ${
           currMetrics.blankState === "white_screen" ? "Tamamen Beyaz Ekran ile Render Riski" : "Tamamen Siyah Ekran ile Yükleme Kesintisi"
         } tespit edildi!`;
@@ -635,9 +778,9 @@ export async function analyzeVideoSecondBySecond(
         } durumunun uygulama çökmesi veya render hatası olup olmadığını kontrol edin.`;
       } else if (!prevModal && currMetrics.modalOverlayDetected) {
         eventType = "modal_open";
-        screenName = `Ekran ${currentScreenIndex} - Modal Diyalog`;
-        whatHappened = `Ekranda modal diyalog penceresi açıldı; arka plan karartıldı ve odaklama pencere merkezine taşındı.`;
-        qaCheckRequirement = `Açılan modal diyalog penceresinin odak yönetimini, kapatma butonunu ve arka plan kilidini doğrulayın.`;
+        currentScreenName = inferContentAwareScreenName(currMetrics, activeRegion, eventType, file.name, sec, transitionCount, currentScreenName);
+        whatHappened = `Ekranda ${currentScreenName} açıldı; arka plan karartıldı ve odaklama pencere merkezine taşındı.`;
+        qaCheckRequirement = `Açılan ${currentScreenName} penceresinin odak yönetimini, kapatma butonunu ve arka plan kilidini doğrulayın.`;
       } else if (currMetrics.redAlertScore > prevRed + 0.8 && currMetrics.redAlertScore > 1.2) {
         eventType = "error_visual";
         whatHappened = `${activeRegion} üzerinde görsel hata veya uyarı bildirimi tetiklendi.`;
@@ -648,11 +791,14 @@ export async function analyzeVideoSecondBySecond(
         qaCheckRequirement = `Görünen başarı veya onay bildiriminin doğru işlem sonrasında tetiklendiğini doğrulayın.`;
       } else if (diffPercent > 32) {
         eventType = "screen_transition";
-        screenName = `Ekran ${currentScreenIndex} - Yeni Sayfa`;
-        whatHappened = `Tam ekran sayfa geçişi gerçekleşti. Ekran ${
-          currentScreenIndex - 1
-        } görünümünden Ekran ${currentScreenIndex} görünümüne geçildi.`;
-        qaCheckRequirement = `Ekran geçişinin gecikmesiz ve görsel kırılma olmadan tamamlandığını doğrulayın.`;
+        transitionCount++;
+        const prevScreenName = currentScreenName || "Başlangıç Arayüzü";
+        currentScreenName = inferContentAwareScreenName(currMetrics, activeRegion, eventType, file.name, sec, transitionCount, prevScreenName);
+        if (currentScreenName === prevScreenName) {
+          currentScreenName = `${prevScreenName} Detay Aşaması`;
+        }
+        whatHappened = `Tam ekran sayfa geçişi gerçekleşti. ${prevScreenName} görünümünden ${currentScreenName} görünümüne geçildi.`;
+        qaCheckRequirement = `${prevScreenName} görünümünden ${currentScreenName} görünümüne geçişin gecikmesiz ve görsel kırılma olmadan tamamlandığını doğrulayın.`;
       } else if (diffPercent >= 12) {
         eventType = "scroll_or_animation";
         whatHappened = `${activeRegion} bölgesinde belirgin arayüz değişimi veya kaydırma hareketi gözlemlendi.`;
@@ -663,13 +809,15 @@ export async function analyzeVideoSecondBySecond(
         qaCheckRequirement = `Kullanıcı etkileşiminin anlık arayüz tepkisini ve doğrulamasını teyit edin.`;
       } else if (consecutiveStaticSeconds >= 3) {
         eventType = "loading_or_wait";
-        whatHappened = `Ekran ${consecutiveStaticSeconds} saniyedir sabit durumda — Kullanıcı bekleme süresi veya olası arayüz donması.`;
+        whatHappened = `${currentScreenName} üzerinde ${consecutiveStaticSeconds} saniyedir hareketsizlik mevcut — Bekleme süresi veya olası arayüz donması.`;
         qaCheckRequirement = `Hareketsizliğin normal bekleme mi yoksa arayüz donması veya eksik yükleniyor animasyonu mu olduğunu kontrol edin.`;
       } else {
         eventType = "steady_state";
-        whatHappened = `${screenName} görünümü stabil devam ediyor.`;
-        qaCheckRequirement = `Ekran üzerindeki verilerin ve arayüz durumunun tutarlılığını koruduğunu gözlemleyin.`;
+        whatHappened = `${currentScreenName} görünümü stabil devam ediyor.`;
+        qaCheckRequirement = `${currentScreenName} üzerindeki verilerin ve arayüz durumunun tutarlılığını koruduğunu gözlemleyin.`;
       }
+
+      const screenName = currentScreenName;
 
       // Thumbnail yakala (İlk kare, ekran geçişleri, etkileşimler veya en fazla 15 anahtar kare)
       let thumbnailDataUrl: string | undefined = undefined;
@@ -683,9 +831,9 @@ export async function analyzeVideoSecondBySecond(
         sec % Math.max(1, Math.floor(maxSec / 12)) === 0;
 
       if (shouldCaptureFrame) {
-        thumbCtx.drawImage(video, 0, 0, 480, 270);
-        thumbnailDataUrl = thumbCanvas.toDataURL("image/jpeg", 0.55);
-        if (sampledFrames.length < 16) {
+        thumbCtx.drawImage(video, 0, 0, 960, 540);
+        thumbnailDataUrl = thumbCanvas.toDataURL("image/jpeg", 0.85);
+        if (sampledFrames.length < 20) {
           const base64Clean = thumbnailDataUrl.split(",")[1] || "";
           if (base64Clean) {
             sampledFrames.push({
@@ -790,20 +938,20 @@ export async function analyzeImageFile(file: File): Promise<ExtractedMediaTeleme
     const aspectRatioLabel = getAspectRatioLabel(width, height);
 
     const canvas = document.createElement("canvas");
-    canvas.width = 160;
-    canvas.height = 90;
+    canvas.width = 320;
+    canvas.height = 180;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
     const thumbCanvas = document.createElement("canvas");
-    thumbCanvas.width = 480;
-    thumbCanvas.height = 270;
+    thumbCanvas.width = 960;
+    thumbCanvas.height = 540;
     const thumbCtx = thumbCanvas.getContext("2d");
 
     if (loaded && ctx && thumbCtx) {
-      ctx.drawImage(img, 0, 0, 160, 90);
-      thumbCtx.drawImage(img, 0, 0, 480, 270);
-      const metrics = computeFrameMetrics(ctx, 160, 90);
-      const thumbUrl = thumbCanvas.toDataURL("image/jpeg", 0.65);
+      ctx.drawImage(img, 0, 0, 320, 180);
+      thumbCtx.drawImage(img, 0, 0, 960, 540);
+      const metrics = computeFrameMetrics(ctx, 320, 180);
+      const thumbUrl = thumbCanvas.toDataURL("image/jpeg", 0.88);
       const base64Clean = thumbUrl.split(",")[1] || "";
 
       const entry: SecondFrameAnalysis = {
@@ -834,13 +982,33 @@ export async function analyzeImageFile(file: File): Promise<ExtractedMediaTeleme
             : metrics.modalOverlayDetected
             ? "modal_open"
             : "initial_screen",
-        screenName: "Ekran Görüntüsü (Sabit Kare)",
-        whatHappened: `Görsel Analizi: ${file.name} (${aspectRatioLabel}, ${
+        screenName: inferContentAwareScreenName(
+          metrics,
+          "Tam Ekran Görsel İncelemesi",
+          metrics.redAlertScore > 1.2
+            ? "error_visual"
+            : metrics.modalOverlayDetected
+            ? "modal_open"
+            : "initial_screen",
+          file.name,
+          0,
+          0
+        ),
+        whatHappened: `${inferContentAwareScreenName(
+          metrics,
+          "Tam Ekran Görsel İncelemesi",
+          metrics.redAlertScore > 1.2
+            ? "error_visual"
+            : metrics.modalOverlayDetected
+            ? "modal_open"
+            : "initial_screen",
+          file.name,
+          0,
+          0
+        )} arayüzü incelendi. ${file.name} dosyasında (${aspectRatioLabel}, ${
           metrics.isDarkTheme ? "Koyu Tema" : "Açık Tema"
-        }, ~${metrics.uiBlocksCount} UI bileşen grubu${
-          metrics.redAlertScore > 1.2 ? ", Kırmızı Hata/Uyarı Alanı Tespit Edildi" : ""
-        }${metrics.modalOverlayDetected ? ", Açık Modal/Popup Tespit Edildi" : ""}).`,
-        qaCheckRequirement: `Ekran görüntüsündeki (${aspectRatioLabel}) tüm bileşenlerin hizalamasını, metin okunabilirliğini ve durum mesajlarını doğrulayın.`,
+        }, ~${metrics.uiBlocksCount} UI bileşen grubu) temel arayüz bileşenleri ve etkileşim alanları analiz edildi.`,
+        qaCheckRequirement: `Arayüz üzerindeki tüm bileşenlerin hizalamasını, metin okunabilirliğini ve durum mesajlarını doğrulayın.`,
         thumbnailDataUrl: thumbUrl,
       };
 
@@ -890,7 +1058,10 @@ function buildSyntheticVideoTelemetry(
     let eventType: SecondFrameAnalysis["eventType"] = "steady_state";
     let activeRegion = "Ana form ve içerik alanı";
     let diffPercent = 4.2;
-    let screenName = s < Math.ceil(estimatedSeconds / 2) ? "Ekran 1 - Başlangıç Aşaması" : "Ekran 2 - Sonuç Aşaması";
+    const cleanBase = file.name ? file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ").trim() : "Ana Arayüz";
+    let screenName = s < Math.ceil(estimatedSeconds / 2)
+      ? `${cleanBase} Başlangıç ve İşlem Formu`
+      : `${cleanBase} Onay ve Sonuç Görünümü`;
     let whatHappened = `${screenName} üzerinde kullanıcı akışı devam ediyor.`;
     let qaCheckRequirement = `Arayüz durumunun beklenen akışla uyumlu olduğunu doğrulayın.`;
 

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
+const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const config_1 = require("./config");
 const api_1 = __importDefault(require("./routes/api"));
 const errorHandler_1 = require("./middlewares/errorHandler");
@@ -15,11 +16,15 @@ const app = (0, express_1.default)();
 app.use((0, helmet_1.default)({
     contentSecurityPolicy: false, // Local dev ve API kullanımı için uyumlu
 }));
-// CORS Yapılandırması
-app.use((0, cors_1.default)({
+// CORS Yapılandırması (HttpOnly çerezler ve preflight OPTIONS istekleri için)
+const corsOptions = {
     origin: config_1.config.corsOrigin === "*" ? true : config_1.config.corsOrigin,
     credentials: true,
-}));
+};
+app.use((0, cors_1.default)(corsOptions));
+app.options("*", (0, cors_1.default)(corsOptions));
+// Cookie Parser (HttpOnly Developer Mode Oturumları için)
+app.use((0, cookie_parser_1.default)());
 // Body Parser - Video analizi için 200MB limit (çoklu video ve saniye kareleri için yeterli)
 app.use(express_1.default.json({ limit: "200mb" }));
 app.use(express_1.default.urlencoded({ extended: true, limit: "200mb" }));
@@ -36,9 +41,9 @@ app.get("/", (_req, res) => {
 app.use("/api", api_1.default);
 // Hata Yakalama Middleware'i
 app.use(errorHandler_1.errorHandler);
-// Sunucuyu Başlat
-const server = app.listen(config_1.config.port, () => {
-    console.log(`🚀 AI Test Adımları Motoru Aktif: http://localhost:${config_1.config.port}`);
+// Sunucuyu Başlat (0.0.0.0 ile hem 127.0.0.1 hem localhost bağlantılarını kabul eder)
+const server = app.listen(config_1.config.port, "0.0.0.0", () => {
+    console.log(`🚀 AI Test Adımları Motoru Aktif: http://127.0.0.1:${config_1.config.port} & http://localhost:${config_1.config.port}`);
 });
 // Graceful Shutdown (Temiz Kapanma)
 process.on("SIGTERM", () => {

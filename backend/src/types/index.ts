@@ -34,6 +34,10 @@ export interface TestPlanResult {
   previousContent?: string;
   newContent?: string;
   persona?: "qa" | "developer";
+  riskLevel?: string;
+  riskScore?: number;
+  accuracyScale?: number;
+  accuracyLabel?: string;
 }
 
 export interface TemplateItem {

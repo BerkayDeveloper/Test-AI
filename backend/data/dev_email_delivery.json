@@ -1,0 +1,9 @@
+{
+  "to": "berkaylivetest@gmail.com",
+  "from": "\"Developer Mode Security\" <berkaylivetest@gmail.com>",
+  "code": "74297447",
+  "formattedCode": "7429 7447",
+  "sentAt": "2026-11-04T06:25:48.697Z",
+  "deliveredVia": "local_dev_store",
+  "notice": "Gerçek e-posta teslimatı için backend/.env dosyasında SMTP_PASS (Gmail Uygulama Şifresi) tanımlayın."
+}

@@ -47,6 +47,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
 
   const [title, setTitle] = useState(() => cleanTitle(plan.title || "", isAdmin));
   const [category, setCategory] = useState(plan.category || "code");
+  const [riskLevel, setRiskLevel] = useState<string>(plan.riskLevel || "MEDIUM");
   const [overview, setOverview] = useState(() => cleanOverview(plan.overview || "", isAdmin));
   const [testCases, setTestCases] = useState<TestCase[]>(() => {
     const parsed = JSON.parse(JSON.stringify(plan.testCases || []));
@@ -140,6 +141,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
         category,
         diffSummary: overview,
         testCases,
+        riskLevel,
       });
 
       const fullPlan: TestPlanResult = {
@@ -149,8 +151,9 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
         category,
         overview,
         testCases,
+        riskLevel: updated.riskLevel || riskLevel,
         totalTestCount: testCases.length,
-        criticalTestCount: testCases.filter((t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek") || t.priority.includes("P1") || t.priority.includes("P2")).length,
+        criticalTestCount: testCases.filter((t) => (t.priority || "").includes("Kritik") || (t.priority || "").includes("Yüksek") || (t.priority || "").includes("P1") || (t.priority || "").includes("P2")).length,
       };
 
       setSuccessMsg("✓ Test planı başarıyla kaydedildi.");
@@ -250,22 +253,38 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
               onChange={(e) => setTitle(e.target.value)}
             />
 
-            <TextField
-              select
-              fullWidth
-              size="small"
-              label="Kategori / Platform"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <MenuItem value="none">Seçilmedi</MenuItem>
-              <MenuItem value="game">🎮 Oyun Geliştirme (Unity / Unreal)</MenuItem>
-              <MenuItem value="mobile">📱 Mobil Uygulama</MenuItem>
-              <MenuItem value="code">💻 Genel Kaynak Kod</MenuItem>
-              <MenuItem value="api">🌐 API & Entegrasyon</MenuItem>
-              <MenuItem value="database">🗄️ Veritabanı / SQL</MenuItem>
-              <MenuItem value="security">🔒 Güvenlik & Yetkilendirme</MenuItem>
-            </TextField>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="Kategori / Platform"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+              >
+                <MenuItem value="none">Seçilmedi</MenuItem>
+                <MenuItem value="game">🎮 Oyun Geliştirme (Unity / Unreal)</MenuItem>
+                <MenuItem value="mobile">📱 Mobil Uygulama</MenuItem>
+                <MenuItem value="code">💻 Genel Kaynak Kod</MenuItem>
+                <MenuItem value="api">🌐 API & Entegrasyon</MenuItem>
+                <MenuItem value="database">🗄️ Veritabanı / SQL</MenuItem>
+                <MenuItem value="security">🔒 Güvenlik & Yetkilendirme</MenuItem>
+              </TextField>
+
+              <TextField
+                select
+                fullWidth
+                size="small"
+                label="Plan Genel Önem Düzeyi (Risk Seviyesi)"
+                value={riskLevel}
+                onChange={(e) => setRiskLevel(e.target.value)}
+              >
+                <MenuItem value="CRITICAL">🔴 Kritik (CRITICAL)</MenuItem>
+                <MenuItem value="HIGH">🟠 Yüksek (HIGH)</MenuItem>
+                <MenuItem value="MEDIUM">🟡 Orta / Normal (MEDIUM)</MenuItem>
+                <MenuItem value="LOW">🟢 Düşük (LOW)</MenuItem>
+              </TextField>
+            </Stack>
 
             <TextField
               fullWidth
@@ -350,15 +369,15 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                 <TextField
                   select
                   size="small"
-                  label="Öncelik"
+                  label="Önem / Öncelik"
                   value={tc.priority}
                   onChange={(e) => handleUpdateTestCase(index, "priority", e.target.value)}
                   sx={{ minWidth: 160 }}
                 >
-                  <MenuItem value="Kritik">Kritik</MenuItem>
-                  <MenuItem value="Yüksek">Yüksek</MenuItem>
-                  <MenuItem value="Orta">Orta</MenuItem>
-                  <MenuItem value="Düşük">Düşük</MenuItem>
+                  <MenuItem value="Kritik">🔴 Kritik</MenuItem>
+                  <MenuItem value="Yüksek">🟠 Yüksek</MenuItem>
+                  <MenuItem value="Orta">🟡 Orta</MenuItem>
+                  <MenuItem value="Düşük">🟢 Düşük</MenuItem>
                 </TextField>
                 <TextField
                   size="small"
@@ -369,13 +388,15 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                 />
               </Stack>
 
-              <TextField
-                fullWidth
-                size="small"
-                label="Ön Koşul"
-                value={tc.preconditions}
-                onChange={(e) => handleUpdateTestCase(index, "preconditions", e.target.value)}
-              />
+              {isAdmin && (
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Ön Koşul"
+                  value={tc.preconditions}
+                  onChange={(e) => handleUpdateTestCase(index, "preconditions", e.target.value)}
+                />
+              )}
 
               {/* Adımlar Listesi */}
               <Box sx={{ p: 1.5, background: "rgba(0, 0, 0, 0.2)", borderRadius: 1.5 }}>
@@ -422,15 +443,17 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                 </Stack>
               </Box>
 
-              <TextField
-                fullWidth
-                multiline
-                rows={2}
-                size="small"
-                label="Beklenen Sonuç"
-                value={tc.expectedResult}
-                onChange={(e) => handleUpdateTestCase(index, "expectedResult", e.target.value)}
-              />
+              {isAdmin && (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={2}
+                  size="small"
+                  label="Beklenen Sonuç"
+                  value={tc.expectedResult}
+                  onChange={(e) => handleUpdateTestCase(index, "expectedResult", e.target.value)}
+                />
+              )}
             </Stack>
           </Paper>
         ))}

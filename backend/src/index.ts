@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 import { config } from "./config";
 import apiRoutes from "./routes/api";
 import { errorHandler } from "./middlewares/errorHandler";
@@ -13,11 +14,16 @@ app.use(helmet({
   contentSecurityPolicy: false, // Local dev ve API kullanımı için uyumlu
 }));
 
-// CORS Yapılandırması
-app.use(cors({
+// CORS Yapılandırması (HttpOnly çerezler ve preflight OPTIONS istekleri için)
+const corsOptions = {
   origin: config.corsOrigin === "*" ? true : config.corsOrigin,
   credentials: true,
-}));
+};
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+// Cookie Parser (HttpOnly Developer Mode Oturumları için)
+app.use(cookieParser());
 
 // Body Parser - Video analizi için 200MB limit (çoklu video ve saniye kareleri için yeterli)
 app.use(express.json({ limit: "200mb" }));
@@ -41,9 +47,9 @@ app.use("/api", apiRoutes);
 // Hata Yakalama Middleware'i
 app.use(errorHandler);
 
-// Sunucuyu Başlat
-const server = app.listen(config.port, () => {
-  console.log(`🚀 AI Test Adımları Motoru Aktif: http://localhost:${config.port}`);
+// Sunucuyu Başlat (0.0.0.0 ile hem 127.0.0.1 hem localhost bağlantılarını kabul eder)
+const server = app.listen(config.port, "0.0.0.0", () => {
+  console.log(`🚀 AI Test Adımları Motoru Aktif: http://127.0.0.1:${config.port} & http://localhost:${config.port}`);
 });
 
 // Graceful Shutdown (Temiz Kapanma)

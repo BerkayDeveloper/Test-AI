@@ -1,6 +1,7 @@
 import { config } from "../config";
 import { TestCase } from "../types";
-import { cleanTestCase } from "../utils/titleCleaner";
+import { cleanTestCase, cleanTitle } from "../utils/titleCleaner";
+import { geminiCliService } from "./geminiCliService";
 
 export interface SecondTimelineEntry {
   second: number;
@@ -86,6 +87,112 @@ function formatSec(sec: number): string {
 }
 
 /**
+ * Dosya adı, kullanıcı notları, aktif bölge ve olay türüne göre
+ * "Ekran 1", "Ekran 2" gibi genel ve belirsiz ifadeler yerine videoda gerçekten görünen ekranın içeriğine uygun,
+ * spesifik, işlevsel ve anlamlı ekran isimleri üretir.
+ */
+export function determineSpecificScreenName(
+  fileName: string,
+  notes: string = "",
+  activeRegion: string = "",
+  eventType: string = "",
+  phaseIndex: number = 0,
+  prevScreenName?: string
+): string {
+  const combined = `${fileName} ${notes}`.toLowerCase();
+
+  // 1. Modal / Diyalog
+  if (eventType === "modal_open" || activeRegion.includes("Modal") || activeRegion.includes("Diyalog")) {
+    if (combined.includes("error") || combined.includes("hata") || combined.includes("uyari")) {
+      return "Hata Bildirimi ve Uyarı Modal Penceresi";
+    }
+    if (combined.includes("onay") || combined.includes("success") || combined.includes("basari")) {
+      return "İşlem Onay ve Başarı Modal Penceresi";
+    }
+    return "Açılır İşlem Onay ve Bilgilendirme Modal Penceresi";
+  }
+
+  // 2. Oyun / Gameplay
+  const isGame = /\b(game|oyun|gameplay|karakter|character|can\s*bar|health|hasar|damage|hud|fps|joystick|unity|unreal)\b/i.test(combined);
+  if (isGame) {
+    if (eventType === "error_visual" || combined.includes("hasar") || combined.includes("damage")) {
+      return "Karakter Hasar Alma ve Kritik Sağlık Görünümü";
+    }
+    if (eventType === "success_visual" || combined.includes("heal") || combined.includes("can")) {
+      return "Karakter İyileşme ve Can Tazeleme Sahnesi";
+    }
+    if (phaseIndex > 0) {
+      return "Oyun İçi Görev ve Seviye İlerleme Sahnesi";
+    }
+    return "Oyun İçi Karakter HUD ve Oynanış Sahnesi";
+  }
+
+  // 3. Yapay Zeka / Chat
+  const isAi = /\b(ai|chat|sohbet|prompt|bot|llm|istem|gemini|gpt)\b/i.test(combined);
+  if (isAi) {
+    if (activeRegion.includes("Alt") || activeRegion.includes("Giriş")) {
+      return "Prompt ve Komut Giriş Paneli";
+    }
+    if (eventType === "scroll_or_animation" || activeRegion.includes("Merkez")) {
+      return "Yapay Zeka Yanıt Akışı ve Mesajlaşma Arayüzü";
+    }
+    return "Yapay Zeka Sohbet ve Komut Giriş Ekranı";
+  }
+
+  // 4. Veri Tablosu & Dashboard
+  const isTable = /\b(table|tablo|dashboard|panel|grid|kpi|rapor|istatistik)\b/i.test(combined);
+  if (isTable) {
+    if (activeRegion.includes("Üst") || activeRegion.includes("Filtre")) {
+      return "Tablo Filtreleme ve Arama Arayüzü";
+    }
+    if (phaseIndex > 0) {
+      return "Detaylı Rapor ve Analiz Görünümü";
+    }
+    return "Dinamik Veri Tablosu ve Kayıt Listeleme Ekranı";
+  }
+
+  // 5. Medya Oynatıcı
+  const isMedia = /\b(player|video|oynatici|stream|media|seekbar)\b/i.test(combined);
+  if (isMedia) {
+    return "Medya Oynatıcı ve Oynatma Kontrolleri Ekranı";
+  }
+
+  // 6. E-Ticaret Sepet ve Ödeme
+  const isEcom = /\b(cart|sepet|checkout|odeme|siparis|fatura|kupon|market|shop)\b/i.test(combined);
+  if (isEcom) {
+    if (phaseIndex > 0 || activeRegion.includes("Ödeme") || activeRegion.includes("Buton")) {
+      return "Teslimat Bilgileri ve Ödeme Tamamlama Formu";
+    }
+    return "Alışveriş Sepeti ve Sipariş Özeti Ekranı";
+  }
+
+  // 7. Kimlik Doğrulama / Kullanıcı Girişi
+  const isAuth = /\b(login|auth|giris|signin|sign-in|register|kayit|signup|sign-up|otp|2fa|sifre|password)\b/i.test(combined);
+  if (isAuth) {
+    if (combined.includes("otp") || combined.includes("2fa")) {
+      return "İki Adımlı SMS ve OTP Doğrulama Formu";
+    }
+    if (combined.includes("register") || combined.includes("kayit")) {
+      return "Kullanıcı Kayıt ve Hesap Oluşturma Formu";
+    }
+    if (phaseIndex > 0) {
+      return "Giriş Sonrası Ana Karşılama Paneli";
+    }
+    return "Kullanıcı Girişi ve Kimlik Doğrulama Formu";
+  }
+
+  // 8. Genel
+  const cleanName = fileName.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ").trim();
+  if (phaseIndex === 0) {
+    return cleanName ? `${cleanName} Ana Arayüzü` : "Ana Karşılama ve İşlem Ekranı";
+  } else if (phaseIndex === 1) {
+    return cleanName ? `${cleanName} Detay ve İşlem Paneli` : "Detaylı Bilgi ve İşlem Paneli";
+  } else {
+    return cleanName ? `${cleanName} Onay ve Sonuç Görünümü` : "İşlem Onay ve Sonuç Görünümü";
+  }
+}
+
+/**
  * MP4 / WebM ikili (binary) verisinden gerçek süre (mvhd), çözünürlük (tkhd) ve saniye bazlı
  * kare entropi değişimlerini çıkarır (Tarayıcı dışı doğrudan API çağrıları için yedek analizör).
  */
@@ -101,6 +208,7 @@ function extractTimelineFromBinaryMedia(
   const isVideo = file.mimeType.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv|ogg)$/i.test(file.name);
   if (!isVideo) {
     const resLabel = file.aspectRatioLabel || (file.width && file.height ? `${file.width}x${file.height}` : "1920x1080 (Tam Ekran Görsel)");
+    const initialScreen = determineSpecificScreenName(file.name, file.notes || "", "Tam Ekran Görsel İncelemesi", "initial_screen", 0);
     return {
       durationSeconds: 1,
       formattedDuration: "00:01",
@@ -112,9 +220,9 @@ function extractTimelineFromBinaryMedia(
           diffPercent: 100,
           activeRegion: "Tam Ekran Görsel İncelemesi",
           eventType: "initial_screen",
-          screenName: "Ekran 1 (Sabit Ekran Görüntüsü)",
-          whatHappened: `${file.name} ekran görüntüsü yüklendi (${resLabel}) ve görsel bileşenler incelendi.`,
-          qaCheckRequirement: `00:00 anındaki ekran görüntüsünde yer alan tüm UI elemanlarının, metinlerin ve durum mesajlarının doğruluğunu kontrol edin.`,
+          screenName: initialScreen,
+          whatHappened: `${initialScreen} incelendi. ${file.name} ekran görüntüsü yüklendi (${resLabel}) ve görsel bileşenler analiz edildi.`,
+          qaCheckRequirement: `00:00 anındaki ${initialScreen} üzerinde yer alan tüm UI elemanlarının, metinlerin ve durum mesajlarının doğruluğunu kontrol edin.`,
         },
       ],
     };
@@ -175,7 +283,8 @@ function extractTimelineFromBinaryMedia(
 
   const maxSec = Math.min(120, Math.max(1, durationSec));
   const timeline: SecondTimelineEntry[] = [];
-  let screenCounter = 1;
+  let transitionCount = 0;
+  let currentScreenName = determineSpecificScreenName(file.name, file.notes || "", "", "initial_screen", 0);
 
   const regions = [
     "Üst Navigasyon / Başlık Barı",
@@ -220,16 +329,20 @@ function extractTimelineFromBinaryMedia(
       eventType = "initial_screen";
       activeRegion = "Tam Ekran Açılış Görünümü";
       diffPercent = 100;
-      whatHappened = `${file.name} videosu başlangıç ekranı yüklendi. Temel arayüz bileşenleri ve sayfa düzeni görünür durumda.`;
-      qaCheckRequirement = `Açılış ekranında tüm arayüz elemanlarının eksiksiz ve kayma olmadan yüklendiğini doğrulayın.`;
+      currentScreenName = determineSpecificScreenName(file.name, file.notes || "", activeRegion, eventType, 0);
+      whatHappened = `${currentScreenName} yüklendi. ${file.name} başlangıç durumu ve temel arayüz bileşenleri görünür durumda.`;
+      qaCheckRequirement = `${currentScreenName} üzerindeki tüm arayüz elemanlarının eksiksiz ve görsel kayma olmadan yüklendiğini doğrulayın.`;
     } else if (diffPercent > 32) {
-      screenCounter++;
       eventType = "screen_transition";
       activeRegion = "Tam Ekran Sayfa Geçişi";
-      whatHappened = `Tam ekran sayfa geçişi tespit edildi. Ekran ${
-        screenCounter - 1
-      } durumundan Ekran ${screenCounter} durumuna geçildi.`;
-      qaCheckRequirement = `Ekran ${screenCounter - 1} görünümünden Ekran ${screenCounter} görünümüne geçişin gecikmesiz ve görsel bozulma olmadan gerçekleştiğini doğrulayın.`;
+      transitionCount++;
+      const prevScreenName = currentScreenName;
+      currentScreenName = determineSpecificScreenName(file.name, file.notes || "", activeRegion, eventType, transitionCount, prevScreenName);
+      if (currentScreenName === prevScreenName) {
+        currentScreenName = `${prevScreenName} Detay Aşaması`;
+      }
+      whatHappened = `Tam ekran sayfa geçişi tespit edildi. ${prevScreenName} durumundan ${currentScreenName} durumuna geçildi.`;
+      qaCheckRequirement = `${prevScreenName} görünümünden ${currentScreenName} görünümüne geçişin gecikmesiz ve görsel bozulma olmadan gerçekleştiğini doğrulayın.`;
     } else if (diffPercent >= 12) {
       eventType = "scroll_or_animation";
       whatHappened = `${activeRegion} üzerinde dinamik bileşen değişimi ve kaydırma hareketi gözlemlendi.`;
@@ -240,8 +353,8 @@ function extractTimelineFromBinaryMedia(
       qaCheckRequirement = `${activeRegion} üzerindeki kullanıcı etkileşiminin anlık arayüz geri bildirimini ve doğrulamasını teyit edin.`;
     } else {
       eventType = "steady_state";
-      whatHappened = `Ekran ${screenCounter} görünümü stabil devam ediyor.`;
-      qaCheckRequirement = `Ekran ${screenCounter} üzerindeki verilerin ve durum göstergelerinin tutarlı kaldığını teyit edin.`;
+      whatHappened = `${currentScreenName} görünümü stabil devam ediyor.`;
+      qaCheckRequirement = `${currentScreenName} üzerindeki verilerin ve durum göstergelerinin tutarlı kaldığını teyit edin.`;
     }
 
     timeline.push({
@@ -250,7 +363,7 @@ function extractTimelineFromBinaryMedia(
       diffPercent,
       activeRegion,
       eventType,
-      screenName: `Ekran ${screenCounter}`,
+      screenName: currentScreenName,
       whatHappened,
       qaCheckRequirement,
     });
@@ -283,7 +396,11 @@ function synthesizeInsightFromTimeline(
   const issues: string[] = [];
 
   // 1. Ekranları zaman aralıklarıyla grupla
-  let currentScreenLabel = timeline[0]?.screenName || "Ekran 1";
+  const defaultInitialScreen = determineSpecificScreenName(file.name, additionalNotes, "", "", 0);
+  let currentScreenLabel = timeline[0]?.screenName || defaultInitialScreen;
+  if (/^Ekran\s*\d+/i.test(currentScreenLabel)) {
+    currentScreenLabel = defaultInitialScreen;
+  }
   let screenStartSec = 0;
   let screenRegions = new Set<string>();
 
@@ -294,14 +411,18 @@ function synthesizeInsightFromTimeline(
     }
 
     const isLast = i === timeline.length - 1;
-    const nextScreen = !isLast ? timeline[i + 1].screenName : null;
+    let nextScreen = !isLast ? timeline[i + 1].screenName : null;
+    if (nextScreen && /^Ekran\s*\d+/i.test(nextScreen)) {
+      nextScreen = determineSpecificScreenName(file.name, additionalNotes, timeline[i + 1].activeRegion, timeline[i + 1].eventType, 1, currentScreenLabel);
+    }
 
     if (isLast || (nextScreen && nextScreen !== currentScreenLabel)) {
       const startTs = formatSec(screenStartSec);
       const endTs = entry.timestamp;
       const regionSummary = Array.from(screenRegions).slice(0, 2).join(", ") || "Ana Görünüm";
+      const cleanLabel = currentScreenLabel.replace(/^Ekran\s*\d+\s*[-:]*\s*/i, "").trim() || "Ana Kullanıcı Arayüzü";
       screens.push(
-        `${startTs} - ${endTs}: ${currentScreenLabel} - ${resolution} - Aktif Bölgeler: ${regionSummary}`
+        `${startTs} - ${endTs}: ${cleanLabel} - ${resolution} - Aktif Alanlar: ${regionSummary}`
       );
       if (nextScreen) {
         currentScreenLabel = nextScreen;
@@ -402,7 +523,7 @@ async function enrichInsightWithGemini(
 
   // Eğer örneklenmiş kareler varsa veya boyut makulse (<= 15MB base64) ekle
   if (file.sampledFrames && file.sampledFrames.length > 0) {
-    for (const frame of file.sampledFrames.slice(0, 10)) {
+    for (const frame of file.sampledFrames.slice(0, 16)) {
       parts.push({
         inline_data: {
           mime_type: frame.mimeType || "image/jpeg",
@@ -423,32 +544,45 @@ async function enrichInsightWithGemini(
     .map((t) => `${t.timestamp}: [${t.eventType}] Bölge=${t.activeRegion}, Değişim=%${t.diffPercent} -> ${t.whatHappened}`)
     .join("\n");
 
-  const prompt = `Sen kıdemli bir QA Test Mühendisisin. "${file.name}" (${baseInsight.duration}, ${baseInsight.resolution}) videosunun her saniyesi kare kare tarandı.
+  const prompt = `Sen kıdemli bir Bilgisayarlı Görü ve QA Test Mimarlık Mühendisisin. "${file.name}" (${baseInsight.duration}, ${baseInsight.resolution}) videosunun her saniyesi kare kare tarandı.
+Ekteki görsel kareleri ve saniye saniye telemetriyi en ince ayrıntısına kadar incele.
 Saniye Saniye Telemetri Verisi:
 ${timelineSummary}
 ${file.notes || additionalNotes ? `\nEk QA Notu: ${file.notes || ""} ${additionalNotes || ""}` : ""}
 
-Görevin: Görselleri ve saniye saniye telemetriyi inceleyerek ekranda ne olduğunu, ekran geçişlerini, kullanıcı eylemlerini ve alana özel test edilebilecek ekstra hata senaryolarını Türkçe JSON olarak döndür.
-ÖNEMLİ KURAL: Yalnızca temel dosya yükleme ve görüntüleme kontrolleriyle sınırlı kalma.
-- Eğer içerik bir oyun ise: oynanabilirlik yani gameplay, karakter can ve hasar sistemi, çarpışma sınırları, fizik motoru, HUD göstergeleri ve kontroller gibi ekstra test edilebilecek hata alanlarını belirle.
-- Eğer içerik yapay zeka ise: istem işleme, token ve karakter sınırları, yanıt akışı kesintisi, model kotası, halüsinasyon gibi ekstra hata alanlarını belirle.
-- Eğer form, web veya mobil uygulama ise: özel karakter ve script sınırları, tarayıcı geri tuşu ile mükerrer işlem, oturum zaman aşımı gibi açıkları belirle.
+GÖREVİN VE KESİN EKRAN ADLANDIRMA KURALLARI:
+1. "Ekran 1", "Ekran 2", "Açılış Ekranı", "Sayfa 1" gibi genel, belirsiz veya numaralandırılmış ifadeleri KESİNLİKLE KULLANMA.
+2. Videoda gerçekten görünen ekranın içeriğini, butonlarını, formlarını, menülerini, HUD göstergelerini ve işlevini derinlemesine analiz ederek o ekrana tam uyan, SPESİFİK, ANLAMLI VE İÇERİKLE BİREBİR ÖRTÜŞEN isimler kullan.
+   Örnekler: "Kullanıcı Girişi ve 2FA SMS Doğrulama Formu", "Ana Kontrol Paneli ve İstatistik Grafikleri", "Karakter Can Barı ve Envanter HUD Ekranı", "Alışveriş Sepeti ve Sipariş Ödeme Formu", "Ürün Arama ve Dinamik Filtreleme Kataloğu", "Hesap Ayarları ve Şifre Güncelleme Formu".
+3. Her ekranı kendi görsel içeriğine ve işlevine göre tanımla. Ekran isimleri videodaki gerçek görüntülerle birebir örtüşmeli ve genel ifadelerden kaçınılmalıdır.
+4. "perSecondScreens" nesnesinde her saniye için (örn: "00:00", "00:01", ...) ekranda gerçekten görünen spesifik ekran adını ver.
+5. "screens" listesinde her ekran fazını şu formatta belirt:
+   "00:00 - 00:05: [Spesifik Ekran Adı] - [Ekranda görünen ana bileşenler ve işlevi]"
+6. "perSecondNotes" nesnesinde her saniyenin detaylı durumunu yaz.
+7. Asla köşeli parantez ([...]) kullanma.
 
-Asla köşeli parantez kullanma ([...] gibi ibareler yasaktır):
+YALNIZCA şu JSON formatında yanıt ver:
 {
-  "screens": ["00:00 - 00:04: Açılış ekranı...", "..."],
-  "userActions": ["00:01: ...", "00:02: ..."],
-  "issues": ["00:05: ..."],
+  "screens": [
+    "00:00 - 00:04: Kullanıcı Giriş ve Kimlik Doğrulama Formu - E-posta, şifre alanları ve giriş butonu",
+    "00:04 - 00:12: Ana Kontrol Paneli ve İstatistik Grafikleri - KPI kartları ve dinamik veri tablosu"
+  ],
+  "perSecondScreens": {
+    "00:00": "Kullanıcı Giriş ve Kimlik Doğrulama Formu",
+    "00:01": "Kullanıcı Giriş ve Kimlik Doğrulama Formu"
+  },
   "perSecondNotes": {
     "00:00": "Bu saniyede ekranda görünen detaylı durum ve eylem",
     "00:01": "..."
   },
+  "userActions": ["00:01: ...", "00:02: ..."],
+  "issues": ["00:05: ..."],
   "flowSummary": "Videonun detaylı akış özeti"
 }`;
 
   parts.push({ text: prompt });
 
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-3.8-flash"];
   for (const model of models) {
     try {
       const response = await fetch(
@@ -459,8 +593,8 @@ Asla köşeli parantez kullanma ([...] gibi ibareler yasaktır):
           body: JSON.stringify({
             contents: [{ parts }],
             generationConfig: {
-              temperature: 0.2,
-              maxOutputTokens: 4096,
+              temperature: 0.15,
+              maxOutputTokens: 6000,
               responseMimeType: "application/json",
             },
           }),
@@ -475,21 +609,51 @@ Asla köşeli parantez kullanma ([...] gibi ibareler yasaktır):
       const cleaned = rawText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
       const parsed = JSON.parse(cleaned);
 
+      const perSecondScreens = parsed.perSecondScreens || {};
       const perSecondNotes = parsed.perSecondNotes || {};
       const updatedTimeline = baseInsight.secondBySecondTimeline.map((entry) => {
+        const geminiScreen = perSecondScreens[entry.timestamp] || perSecondScreens[String(entry.second)];
         const geminiNote = perSecondNotes[entry.timestamp] || perSecondNotes[String(entry.second)];
-        if (geminiNote && typeof geminiNote === "string") {
-          return {
-            ...entry,
-            whatHappened: `${geminiNote.replace(/^\[.*?\]\s*/, "")}`,
-          };
+
+        let screenName = entry.screenName;
+        if (geminiScreen && typeof geminiScreen === "string") {
+          const cleanScreen = geminiScreen.replace(/^Ekran\s*\d+\s*[-:]*\s*/i, "").trim();
+          if (cleanScreen.length > 2) {
+            screenName = cleanScreen;
+          }
         }
-        return entry;
+        if (/^Ekran\s*\d+/i.test(screenName)) {
+          screenName = determineSpecificScreenName(file.name, additionalNotes, entry.activeRegion, entry.eventType, entry.second > 5 ? 1 : 0);
+        }
+
+        let whatHappened = entry.whatHappened;
+        if (geminiNote && typeof geminiNote === "string") {
+          whatHappened = geminiNote.replace(/^\[.*?\]\s*/, "").replace(/Ekran\s*\d+/gi, screenName);
+        } else {
+          whatHappened = whatHappened.replace(/Ekran\s*\d+/gi, screenName);
+        }
+
+        return {
+          ...entry,
+          screenName,
+          whatHappened,
+        };
       });
+
+      let cleanedScreens: string[] = [];
+      if (Array.isArray(parsed.screens) && parsed.screens.length > 0) {
+        cleanedScreens = parsed.screens.map((scr: string) => {
+          return scr.replace(/Ekran\s*\d+\s*[-:]*\s*/gi, "").replace(/\[\s*Ekran\s*\d+[^\]]*\]/gi, "").trim();
+        });
+      } else {
+        cleanedScreens = baseInsight.screens.map((scr: string) =>
+          scr.replace(/Ekran\s*\d+\s*[-:]*\s*/gi, "").replace(/\[\s*Ekran\s*\d+[^\]]*\]/gi, "").trim()
+        );
+      }
 
       return {
         ...baseInsight,
-        screens: Array.isArray(parsed.screens) && parsed.screens.length > 0 ? parsed.screens : baseInsight.screens,
+        screens: cleanedScreens,
         userActions:
           Array.isArray(parsed.userActions) && parsed.userActions.length > 0
             ? parsed.userActions
@@ -504,6 +668,226 @@ Asla köşeli parantez kullanma ([...] gibi ibareler yasaktır):
   }
 
   return baseInsight;
+}
+
+/**
+ * Gemini Vision ile görsel/video karelerinden ve kullanıcının seçtiği test kapsamlarından
+ * doğrudan o içeriğe ve olay akışına %100 uyan, yüksek doğruluklu QA test senaryoları üretir.
+ */
+async function generateDetailedTestCasesWithGeminiVision(
+  apiKey: string,
+  file: MediaFilePayload,
+  insight: VideoInsight,
+  title: string,
+  category: string,
+  additionalNotes: string,
+  selectedScopes?: string[],
+  customScopes?: Array<{ id: string; title: string; reason?: string; badge?: string }>
+): Promise<TestCase[] | null> {
+  const parts: any[] = [];
+
+  if (file.sampledFrames && file.sampledFrames.length > 0) {
+    for (const frame of file.sampledFrames.slice(0, 16)) {
+      if (frame.base64Data) {
+        parts.push({
+          inline_data: {
+            mime_type: frame.mimeType || "image/jpeg",
+            data: frame.base64Data,
+          },
+        });
+      }
+    }
+  } else if (file.base64Data && file.base64Data.length < 20_000_000) {
+    parts.push({
+      inline_data: {
+        mime_type: file.mimeType || "image/jpeg",
+        data: file.base64Data,
+      },
+    });
+  }
+
+  const activeCustoms = (customScopes || []).map((c) => `- Özel Kapsam: ${c.title} (${c.reason || ""})`).join("\n");
+  const activeSelectedScopes = (selectedScopes || []).join(", ");
+
+  const prompt = `Sen Baş QA Test Mimarlık Mühendisisin.
+Ekteki görsel/video karelerini, saniye saniye akışı ve kullanıcının seçtiği test kapsamlarını en üst kalitede, piksel piksel incele.
+
+Dosya: "${file.name}" (${insight.duration}, ${insight.resolution})
+Ek QA Notu: ${file.notes || ""} ${additionalNotes || ""}
+Kullanıcının Seçtiği Aktif Test Kapsamları: ${activeSelectedScopes || "Tüm Tespit Edilen Kapsamlar"}
+${activeCustoms ? `\nKullanıcının Tanımladığı Özel Kapsamlar:\n${activeCustoms}` : ""}
+
+GÖREVİN:
+Ekranda tespit ettiğin gerçek kullanıcı akışına, etkileşimli alanlara, butonlara, menülere ve seçili kapsamlara TAM UYUMLU, EN ÜST KALİTEDE, KESİN, DETAYLI VE GERÇEKÇİ QA test senaryoları üret.
+
+ÖNEMLİ KURAL VE BİÇİMLENDİRME ZORUNLULUKLARI:
+1. Test başlıklarında "Video", "Videolar", "Videoları", "Fotoğraf", "Fotoğraflar", "Görsel", "Görseller" kelimeleri KESİNLİKLE BULUNMAYACAKTIR. Başlıklar doğrudan test edilen fonksiyona, bileşene veya hata durumuna odaklanmalıdır.
+2. Parantez () veya köşeli parantez [] KESİNLİKLE KULLANILMAYACAKTIR. Anlamlar doğrudan cümlenin akışına yedirilecektir.
+3. Test adımları mutlaka Adım 1: ..., Adım 2: ..., Adım 3: ... şeklinde sıralı, her aşamada ne yapılması gerektiğini ve beklenen davranışı açıkça belirten adımlardan oluşmalıdır.
+4. Adımlar videoda/görselde görülen gerçek olaylara ve akışa dayanmalı; şablon veya havada kalan ifadeler içermemelidir.
+5. Her bir seçili test kapsamı (oyun oynanabilirlik/can/hasar, yapay zeka token/akış, sepet/ödeme, tablo vb.) için en az bir derinlemesine test senaryosu üretilmelidir.
+6. Negatif testler, çift tıklama/spam tıklama koruması, sınır değer (boundary) ve ağ kesintisi/gecikmesi senaryolarına yer verilmelidir.
+7. "Ekran 1", "Ekran 2" gibi genel ve numaralandırılmış ifadeler KESİNLİKLE KULLANILMAYACAKTIR. Videoda gerçekten görünen ekranın içeriğine uygun, spesifik ve anlamlı ekran isimleri (Örn: "Kullanıcı Giriş Formu", "Ana Kontrol Paneli", "Karakter Can Barı ve Envanter HUD Ekranı", "Sepet ve Ödeme Formu") kullanılacaktır.
+
+Yanıtını YALNIZCA şu JSON şemasında bir dizi olarak döndür:
+[
+  {
+    "id": "QA-TC-001",
+    "targetComponent": "Test Edilen Bileşen veya Alan Adı",
+    "title": "Açıklayıcı Test Başlığı",
+    "type": "Test Türü",
+    "priority": "Kritik" | "Yüksek" | "Orta",
+    "preconditions": "Ön koşul açıklaması",
+    "steps": [
+      "Adım 1: ...",
+      "Adım 2: ...",
+      "Adım 3: ..."
+    ],
+    "expectedResult": "Beklenen sonuç açıklaması",
+    "status": "Beklemede"
+  }
+]`;
+
+  parts.push({ text: prompt });
+
+  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash", "gemini-3.8-flash"];
+  for (const model of models) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts }],
+            generationConfig: {
+              temperature: 0.15,
+              maxOutputTokens: 8192,
+              responseMimeType: "application/json",
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) continue;
+      const data = (await response.json()) as any;
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!rawText) continue;
+
+      const cleaned = rawText.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (Array.isArray(parsed) && parsed.length >= 3) {
+        const vNum = insight.videoIndex + 1;
+        return parsed.map((tc: any, idx: number) => {
+          return cleanTestCase({
+            id: tc.id || `QA-AI-${vNum}-${String(idx + 1).padStart(3, "0")}`,
+            targetComponent: tc.targetComponent || "Ana Arayüz Bileşeni",
+            title: cleanTitle(tc.title || "Fonksiyonel Doğrulama Testi", true),
+            type: tc.type || "Fonksiyonel Doğrulama Testi",
+            testType: tc.type || "Fonksiyonel Doğrulama Testi",
+            priority: tc.priority || "Yüksek",
+            preconditions: tc.preconditions || "Test ortamı hazır olmalıdır.",
+            steps: Array.isArray(tc.steps) ? tc.steps : ["Adım 1: İşlemi başlatın.", "Adım 2: Sonucu doğrulayın."],
+            expectedResult: tc.expectedResult || "İşlem hatasız tamamlanmalıdır.",
+            status: "Beklemede",
+          }, true);
+        });
+      }
+    } catch (err: any) {
+      console.warn(`[GeminiVision] Test senaryosu üretiminde ${model} atlandı:`, err.message);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * AGL / AGY CLI aracılığıyla doğrudan Gemini 3.8 Flash modeliyle test senaryoları üretir.
+ */
+async function generateDetailedTestCasesWithCliGeminiFlash(
+  file: MediaFilePayload,
+  insight: VideoInsight,
+  title: string,
+  category: string,
+  additionalNotes: string,
+  selectedScopes?: string[],
+  customScopes?: Array<{ id: string; title: string; reason?: string; badge?: string }>
+): Promise<TestCase[] | null> {
+  const isAvail = await geminiCliService.isAvailable();
+  if (!isAvail) return null;
+
+  const timelineSummary = insight.secondBySecondTimeline
+    .slice(0, 60)
+    .map((t) => `${t.timestamp}: [${t.eventType}] Bölge=${t.activeRegion} -> ${t.whatHappened}`)
+    .join("\n");
+
+  const screensSummary = (insight.screens || []).join("\n");
+  const issuesSummary = (insight.issues || []).join("\n");
+
+  const activeScopeList = (selectedScopes || [])
+    .concat((customScopes || []).map((c) => c.title))
+    .join(", ");
+
+  const prompt = `Sen kıdemli bir Test Mimarı ve Google Gemini 3.8 Flash modelisin.
+Medyayı en üst kalitede inceleyen telemetri verileri:
+Medya: ${file.name} (${insight.duration}, ${insight.resolution})
+Ekranlar:
+${screensSummary || "Ana Arayüz"}
+Zaman Akışı ve Saniye Saniye Olaylar:
+${timelineSummary}
+${issuesSummary ? `Tespit Edilen Olası Hata ve QA Noktaları:\n${issuesSummary}` : ""}
+Proje: ${title}
+Kategori: ${category}
+Seçilen Özel Test Kapsamları: ${activeScopeList || "Genel ve Fonksiyonel"}
+Ek QA Notu: ${additionalNotes || "Yok"}
+
+GÖREVİN:
+Bu akışa ve seçilen test kapsamlarına göre en üst kalitede, derinlemesine, adım adım 5-10 adet uçtan uca QA test senaryosu üret.
+ÖNEMLİ KURALLAR:
+1. Başlıklarda asla "Video" veya "Fotoğraf" kelimelerini kullanma.
+2. Asla köşeli parantez ([...]) veya normal parantez ((...)) kullanma.
+3. "Ekran 1", "Ekran 2" gibi genel ve numaralandırılmış ifadeleri KESİNLİKLE KULLANMA. Her ekranı videodaki gerçek görsel içeriğe ve işlevine göre tam ve spesifik olarak adlandır.
+4. Her adım kesinlikle benzersiz olmalı, "Adım 1: ...", "Adım 2: ..." formatında olmalı.
+5. YALNIZCA şu JSON formatında bir dizi (array) döndür, başka hiçbir metin veya markdown ekleme:
+[
+  {
+    "targetComponent": "İlgili Bileşen veya Ekran Adı",
+    "title": "Açıklayıcı Senaryo Başlığı",
+    "type": "Fonksiyonel Doğrulama",
+    "priority": "Kritik",
+    "preconditions": "Ön koşul açıklaması",
+    "steps": [
+      "Adım 1: ...",
+      "Adım 2: ...",
+      "Adım 3: ..."
+    ],
+    "expectedResult": "Beklenen sonuç açıklaması",
+    "status": "Beklemede"
+  }
+]`;
+
+  const res = await geminiCliService.runPromptWithGemini38Flash(prompt, {
+    model: "gemini-3.8-flash",
+    timeoutMs: 45000,
+  });
+
+  if (res.success && Array.isArray(res.parsedJson)) {
+    return res.parsedJson.map((tc: any, idx: number) => ({
+      id: `tc-gemini-flash-${Date.now()}-${idx + 1}`,
+      targetComponent: tc.targetComponent || title,
+      title: cleanTitle(tc.title || `Doğrulama Testi ${idx + 1}`, true),
+      type: tc.type || "Fonksiyonel Test",
+      testType: tc.type || "Fonksiyonel Test",
+      priority: tc.priority || "Yüksek",
+      preconditions: tc.preconditions || "Arayüz yüklenmiş olmalıdır.",
+      steps: Array.isArray(tc.steps) ? tc.steps : ["Adım 1: Arayüzü açın.", "Adım 2: İşlemi gerçekleştirin."],
+      expectedResult: tc.expectedResult || "İşlem başarıyla tamamlanmalıdır.",
+      status: tc.status || "Beklemede",
+    }));
+  }
+
+  return null;
 }
 
 /**
@@ -1790,10 +2174,13 @@ export const videoAnalysisService = {
     files: MediaFilePayload[],
     additionalNotes: string,
     selectedScopes?: string[],
-    customScopes?: Array<{ id: string; title: string; reason?: string; badge?: string }>
+    customScopes?: Array<{ id: string; title: string; reason?: string; badge?: string }>,
+    clientApiKey?: string
   ): Promise<VideoAnalysisResult> {
-    const apiKey = config.aiApiKey;
-    const hasGeminiKey = Boolean(apiKey && apiKey.trim().length > 10);
+    const apiKey = (clientApiKey && clientApiKey.trim().length > 10)
+      ? clientApiKey.trim()
+      : (config.aiApiKey && config.aiApiKey.trim().length > 10 ? config.aiApiKey.trim() : "");
+    const hasGeminiKey = Boolean(apiKey && apiKey.length > 10);
 
     const videoInsights: VideoInsight[] = [];
     const allTestCases: TestCase[] = [];
@@ -1847,15 +2234,62 @@ export const videoAnalysisService = {
       }
 
       // 4. Bu videonun saniye saniye analizine özel QA test senaryolarını oluştur
-      const videoTestCases = generateDetailedTestCasesForSingleVideo(
-        title,
-        category,
-        insight,
-        file.notes || "",
-        additionalNotes,
-        selectedScopes,
-        customScopes
-      );
+      // Önce Gemini Vision ile doğrudan görsel karelerden yüksek doğruluklu test üretmeyi dene
+      let videoTestCases: TestCase[] = [];
+      if (hasGeminiKey) {
+        try {
+          const aiCases = await generateDetailedTestCasesWithGeminiVision(
+            apiKey,
+            file,
+            insight,
+            title,
+            category,
+            additionalNotes,
+            selectedScopes,
+            customScopes
+          );
+          if (aiCases && aiCases.length > 0) {
+            console.log(`[VideoAnalysis] Gemini Vision ile ${aiCases.length} adet kesin doğruluklu test senaryosu üretildi (${file.name})`);
+            videoTestCases = aiCases;
+          }
+        } catch (err: any) {
+          console.warn(`[VideoAnalysis] Gemini Vision test üretiminde istisna, yerel motora geçiliyor:`, err.message);
+        }
+      }
+
+      // AGL / AGY CLI ile Gemini 3.8 Flash modelini dene (Sıfır-Key, doğrudan yerel CLI ile)
+      if (config.useCliAi && videoTestCases.length === 0) {
+        try {
+          const cliCases = await generateDetailedTestCasesWithCliGeminiFlash(
+            file,
+            insight,
+            title,
+            category,
+            additionalNotes,
+            selectedScopes,
+            customScopes
+          );
+          if (cliCases && cliCases.length > 0) {
+            console.log(`[VideoAnalysis] AGL/AGY CLI Gemini 3.8 Flash ile ${cliCases.length} adet test senaryosu üretildi (${file.name})`);
+            videoTestCases = cliCases;
+          }
+        } catch (err: any) {
+          console.warn(`[VideoAnalysis] CLI Gemini 3.8 Flash atlandı:`, err.message);
+        }
+      }
+
+      // Yerel kural ve telemetri motoru (Tamamen offline fallback)
+      if (videoTestCases.length === 0) {
+        videoTestCases = generateDetailedTestCasesForSingleVideo(
+          title,
+          category,
+          insight,
+          file.notes || "",
+          additionalNotes,
+          selectedScopes,
+          customScopes
+        );
+      }
 
       videoInsights.push(insight);
       allTestCases.push(...videoTestCases);

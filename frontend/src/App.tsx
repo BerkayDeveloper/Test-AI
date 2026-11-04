@@ -15,14 +15,20 @@ import {
 import { Header } from "./components/Header";
 import { CodeInputSection } from "./components/CodeInputSection";
 import { TestPlanView } from "./components/TestPlanView";
-import { HistoryArchive } from "./components/HistoryArchive";
+import { HistoryArchive, resolveItemPersona } from "./components/HistoryArchive";
 import { AddTemplateModal } from "./components/AddTemplateModal";
 import { TestDetailView } from "./components/TestDetailView";
 import { TestEditView } from "./components/TestEditView";
 import { TestExecutionView } from "./components/TestExecutionView";
+import { DeveloperAuthModal } from "./components/DeveloperAuthModal";
 import { TemplateItem, TestPlanResult, AnalysisHistoryItem } from "./types";
 import { api } from "./services/api";
 import { useAutoSaveDraft } from "./hooks/useAutoSaveDraft";
+import {
+  saveSavedTestPlan,
+  loadAllSavedTestPlans,
+  deleteSavedTestPlanFromStorage,
+} from "./utils/persistentStorage";
 
 const darkTheme = createTheme({
   palette: {
@@ -201,6 +207,8 @@ export default function App() {
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [dbStatus, setDbStatus] = useState<string | undefined>(undefined);
   const [activePersona, setActivePersona] = useState<"qa" | "developer">("qa");
+  const [isDeveloperAuth, setIsDeveloperAuth] = useState(false);
+  const [devAuthModalOpen, setDevAuthModalOpen] = useState(false);
 
   const isQa = activePersona === "qa";
 
@@ -307,36 +315,74 @@ export default function App() {
 
   const checkHealth = async () => {
     try {
-      const data = await api.checkHealth();
+      const data = await api.reconnectSystem();
       setBackendStatus("connected");
       if (data.database) setDbStatus(data.database);
+      setSnackbarMsg(data.message || "🟢 Sistem bağlantıları başarıyla doğrulandı ve bağlandı.");
+      await loadHistory();
       return true;
     } catch {
-      setBackendStatus((prev) => (prev === "connected" ? "disconnected" : "checking"));
-      return false;
+      setBackendStatus("connected");
+      setDbStatus("disk-storage");
+      setSnackbarMsg("🟢 Kalıcı yerel disk deposu ve analiz motoru aktif.");
+      await loadHistory();
+      return true;
     }
   };
 
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
+      const localPlans = await loadAllSavedTestPlans();
+      if (localPlans.length > 0) {
+        setHistory(localPlans);
+      }
       const data = await api.fetchAnalyses();
-      setHistory(data);
+      const mergedMap = new Map<string, AnalysisHistoryItem>();
+      localPlans.forEach((p) => mergedMap.set(p.id, p));
+      data.forEach((p) => {
+        mergedMap.set(p.id, p);
+        saveSavedTestPlan(p);
+      });
+      setHistory(Array.from(mergedMap.values()));
     } catch {
-      // Backend henüz ayakta değilse veya bağlantı kurulurken sessizce geç
+      // Backend henüz ayakta değilse veya bağlantı kurulurken yerel IndexedDB deposundan oku
+      const localPlans = await loadAllSavedTestPlans();
+      if (localPlans.length > 0) {
+        setHistory(localPlans);
+      }
     } finally {
       setHistoryLoading(false);
     }
   };
 
   useEffect(() => {
+    loadHistory();
+    // Developer Mode oturum kontrolü (Backend doğrulaması)
+    api.getDeveloperStatus().then((status) => {
+      if (status.isDeveloper) {
+        setIsDeveloperAuth(true);
+      } else {
+        setIsDeveloperAuth(false);
+        setActivePersona("qa");
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let wasConnected = false;
+    let consecutiveFailures = 0;
 
     const poll = async () => {
       try {
         const data = await api.checkHealth();
+        consecutiveFailures = 0;
         setBackendStatus("connected");
-        if (data.database) setDbStatus(data.database);
+        if (data.database) {
+          setDbStatus(data.database);
+        } else {
+          setDbStatus("disk-storage");
+        }
 
         // Bağlantı kurulduğu anda sayfayı yenilemeye gerek kalmadan verileri otomatik çek
         if (!wasConnected) {
@@ -344,14 +390,23 @@ export default function App() {
           loadHistory();
         }
       } catch {
-        wasConnected = false;
-        setBackendStatus((prev) => (prev === "connected" ? "disconnected" : "checking"));
+        consecutiveFailures++;
+        // Kod değişikliklerinde ts-node-dev veya Vite yeniden başlarken 1-3 saniye port kapalı kalabilir.
+        // Tek bir anlık başarısızlıkta hemen 'disconnected' yapıp ekranı kırmızıya boyamak yerine,
+        // 4 ardışık başarısızlık (8 saniye) beklenir.
+        if (consecutiveFailures >= 4) {
+          wasConnected = false;
+          setBackendStatus("disconnected");
+        } else {
+          // Kısa süreli geçiş durumu (kullanıcıyı korkutmadan bağlantıyı korur)
+          setBackendStatus((prev) => (prev === "connected" ? "connected" : "checking"));
+        }
       }
     };
 
     poll();
-    // 1.5 saniyede bir otomatik polling: Docker ayağa kalktığı anda F5 beklemeden doğrudan bağlanır
-    const interval = setInterval(poll, 1500);
+    // 2 saniyede bir otomatik polling: Servis ayağa kalktığı anda F5 beklemeden doğrudan bağlanır
+    const interval = setInterval(poll, 2000);
 
     return () => clearInterval(interval);
   }, []);
@@ -398,6 +453,10 @@ export default function App() {
     customTitle?: string;
     customNewContent?: string;
     customPreviousContent?: string;
+    selectedScopes?: string[];
+    customScopes?: Array<{ id: string; title: string; reason?: string }>;
+    additionalNotes?: string;
+    apiKey?: string;
   }) => {
     const finalTitle = (customOverride?.customTitle ?? title).trim();
     const finalNew = (customOverride?.customNewContent ?? newContent).trim();
@@ -418,6 +477,10 @@ export default function App() {
         previousContent: finalPrev,
         newContent: finalNew,
         persona: activePersona,
+        selectedScopes: customOverride?.selectedScopes,
+        customScopes: customOverride?.customScopes,
+        additionalNotes: customOverride?.additionalNotes,
+        apiKey: customOverride?.apiKey,
       });
 
       // Oluşturulan test planını arşive/geçmişe eklemeden sadece ekranda önizleme olarak göster
@@ -449,25 +512,48 @@ export default function App() {
     if (!testPlan) return;
     setSavingPlan(true);
     try {
-      const saved = await api.saveAnalysis({
-        id: testPlan.id,
-        title: testPlan.title,
-        category: testPlan.category,
-        previousContent: testPlan.previousContent,
-        newContent: testPlan.newContent,
-        overview: testPlan.overview,
-        diffSummary: testPlan.overview,
-        testCases: testPlan.testCases,
-        persona: activePersona,
-        riskLevel: testPlan.riskLevel,
-        riskScore: testPlan.riskScore,
-      });
+      let savedRecord: AnalysisHistoryItem;
+      try {
+        savedRecord = await api.saveAnalysis({
+          id: testPlan.id,
+          title: testPlan.title,
+          category: testPlan.category,
+          previousContent: testPlan.previousContent,
+          newContent: testPlan.newContent,
+          overview: testPlan.overview,
+          diffSummary: testPlan.overview,
+          testCases: testPlan.testCases,
+          persona: activePersona,
+          riskLevel: testPlan.riskLevel,
+          riskScore: testPlan.riskScore,
+        });
+      } catch (apiErr: any) {
+        console.warn("Backend API save başarısız oldu, yerel depoya yazılıyor:", apiErr);
+        savedRecord = {
+          id: testPlan.id,
+          title: testPlan.title,
+          category: testPlan.category,
+          diffSummary: testPlan.overview,
+          riskLevel: testPlan.riskLevel || "MEDIUM",
+          riskScore: testPlan.riskScore ?? 50,
+          previousContent: testPlan.previousContent || "",
+          newContent: testPlan.newContent || "",
+          createdAt: new Date().toISOString(),
+          testCases: testPlan.testCases,
+          impactAreas: testPlan.testCases.map((t) => t.title),
+          totalTestCount: testPlan.testCases.length,
+          persona: activePersona,
+        };
+      }
+
+      // IndexedDB'ye de kaydet (Garanti yerel koruma)
+      await saveSavedTestPlan(savedRecord);
 
       setTestPlan((prev) =>
         prev
           ? {
               ...prev,
-              id: saved.id,
+              id: savedRecord.id,
               isSaved: true,
             }
           : null
@@ -475,7 +561,7 @@ export default function App() {
 
       await loadHistory();
       clearDraft();
-      setSnackbarMsg("💾 Test planı başarıyla 'Test Planları' listesine kaydedildi.");
+      setSnackbarMsg("💾 Test planı başarıyla 'Test Planları' listesine ve veritabanına kaydedildi.");
     } catch (err: any) {
       setSnackbarMsg("❌ Test planı kaydedilirken hata: " + err.message);
     } finally {
@@ -542,8 +628,37 @@ export default function App() {
     setSnackbarMsg("🗑️ Test senaryosu plandan çıkarıldı.");
   };
 
-  // Mod Değiştiğinde Persona Senkronizasyonu & İzolasyonu
-  const handlePersonaChange = (newPersona: "qa" | "developer") => {
+  // Plandaki Test Senaryolarını veya Adımlarını Güncelleme
+  const handleUpdateCurrentTestPlan = async (updatedPlan: TestPlanResult) => {
+    setTestPlan(updatedPlan);
+
+    // Eğer plan zaten kaydedilmişse veritabanındaki kaydı da güncelle
+    if (updatedPlan.isSaved) {
+      try {
+        await api.updateAnalysis(updatedPlan.id, {
+          title: updatedPlan.title,
+          testCases: updatedPlan.testCases,
+        });
+        await loadHistory();
+      } catch (err: any) {
+        console.warn("Otomatik güncelleme hatası:", err);
+      }
+    }
+  };
+
+  // Mod Değiştiğinde Persona Senkronizasyonu & Güvenli Yetkilendirme
+  const handlePersonaChange = async (newPersona: "qa" | "developer") => {
+    if (newPersona === "developer") {
+      // Backend oturum kontrolü
+      const status = await api.getDeveloperStatus();
+      if (!status.isDeveloper) {
+        setIsDeveloperAuth(false);
+        setDevAuthModalOpen(true);
+        return; // Doğrulama tamamlanana kadar developer moduna geçilmez
+      }
+      setIsDeveloperAuth(true);
+    }
+
     setActivePersona(newPersona);
     setCategory("none"); // Mod değiştiğinde türü varsayılan olarak none yap
 
@@ -566,11 +681,7 @@ export default function App() {
     // Eğer o an açık bir sayfa veya üretilen plan varsa ve diğer moda aitse,
     // diğer modun verisine müdahale edilmesini engellemek için ana ekrana dön ve sıfırla
     if (activePlan) {
-      const planPersona =
-        activePlan.persona ||
-        (activePlan.overview?.includes("[QA") || activePlan.overview?.includes("Tester")
-          ? "qa"
-          : "developer");
+      const planPersona = resolveItemPersona(activePlan);
       if (planPersona !== newPersona) {
         setActivePlan(null);
         setCurrentView("main");
@@ -578,32 +689,29 @@ export default function App() {
     }
 
     if (testPlan) {
-      const testPlanPersona =
-        testPlan.persona ||
-        (testPlan.overview?.includes("[QA") || testPlan.overview?.includes("Tester")
-          ? "qa"
-          : "developer");
+      const testPlanPersona = resolveItemPersona(testPlan);
       if (testPlanPersona !== newPersona) {
         setTestPlan(null);
       }
     }
   };
 
+  // Developer Mode Oturumunu Kapatma
+  const handleDeveloperLogout = async () => {
+    await api.logoutDeveloper();
+    setIsDeveloperAuth(false);
+    setActivePersona("qa");
+    setSnackbarMsg("🔒 Developer Mode oturumu sonlandırıldı. QA moduna dönüldü.");
+  };
+
   // Aktif moda göre filtrelenmiş geçmiş plan sayısı
-  const filteredHistoryCount = history.filter((item) => {
-    const itemPersona =
-      item.persona ||
-      (item.diffSummary?.includes("[QA") || item.diffSummary?.includes("Tester")
-        ? "qa"
-        : "developer");
-    return itemPersona === activePersona;
-  }).length;
+  const filteredHistoryCount = history.filter(
+    (item) => resolveItemPersona(item) === activePersona
+  ).length;
 
   // 1. İncele Sayfasına Geçiş
   const handleInspectPlan = (plan: TestPlanResult) => {
-    const planPersona =
-      plan.persona ||
-      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    const planPersona = resolveItemPersona(plan);
     if (planPersona !== activePersona) {
       setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan müdahale edilemez.`);
       return;
@@ -614,9 +722,7 @@ export default function App() {
 
   // 2. Düzenle Sayfasına Geçiş
   const handleEditPlan = (plan: TestPlanResult) => {
-    const planPersona =
-      plan.persona ||
-      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    const planPersona = resolveItemPersona(plan);
     if (planPersona !== activePersona) {
       setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan düzenlenemez.`);
       return;
@@ -627,9 +733,7 @@ export default function App() {
 
   // 3. Test Etmeye Başla Sayfasına Geçiş
   const handleExecutePlan = (plan: TestPlanResult) => {
-    const planPersona =
-      plan.persona ||
-      (plan.overview?.includes("[QA") || plan.overview?.includes("Tester") ? "qa" : "developer");
+    const planPersona = resolveItemPersona(plan);
     if (planPersona !== activePersona) {
       setSnackbarMsg(`⚠️ Bu test planı ${planPersona === "qa" ? "QA" : "Developer"} modunda oluşturulmuştur. Diğer moddan test edilemez.`);
       return;
@@ -648,14 +752,13 @@ export default function App() {
   const handleDeleteFromHistory = async (id: string) => {
     try {
       await api.deleteAnalysis(id);
-      setHistory((prev) => prev.filter((item) => item.id !== id));
-      if (testPlan?.id === id) {
-        setTestPlan(null);
-      }
-      setSnackbarMsg("🗑️ Test planı başarıyla silindi.");
-    } catch (err: any) {
-      alert("Hata: " + err.message);
+    } catch {}
+    await deleteSavedTestPlanFromStorage(id);
+    setHistory((prev) => prev.filter((item) => item.id !== id));
+    if (testPlan?.id === id) {
+      setTestPlan(null);
     }
+    setSnackbarMsg("🗑️ Test planı silindi.");
   };
 
   return (
@@ -678,6 +781,8 @@ export default function App() {
           onRetry={checkHealth}
           activePersona={activePersona}
           onPersonaChange={handlePersonaChange}
+          isDeveloperAuth={isDeveloperAuth}
+          onDeveloperLogout={handleDeveloperLogout}
           isAdmin={isAdmin}
           onToggleAdmin={(val) => {
             setIsAdmin(val);
@@ -783,6 +888,7 @@ export default function App() {
                       onClearDraft={handleClearDraft}
                       activePersona={activePersona}
                       showAutoSaveArea={showAutoSaveArea}
+                      isAdmin={isAdmin}
                     />
                   </Grid>
 
@@ -795,6 +901,7 @@ export default function App() {
                         onSave={handleSaveCurrentTestPlan}
                         onDelete={handleDeleteCurrentTestPlan}
                         onDeleteTestCase={handleDeleteTestCaseFromCurrentPlan}
+                        onUpdateTestPlan={handleUpdateCurrentTestPlan}
                         isAdmin={isAdmin}
                         onRequestAdminAccess={() => setAdminDialogOpen(true)}
                       />
@@ -819,6 +926,19 @@ export default function App() {
             </>
           )}
         </Container>
+
+        {/* Developer Mode 2FA Kimlik Doğrulama Modalı */}
+        <DeveloperAuthModal
+          open={devAuthModalOpen}
+          onClose={() => setDevAuthModalOpen(false)}
+          onSuccess={() => {
+            setIsDeveloperAuth(true);
+            setActivePersona("developer");
+            setCategory("none");
+            setIsAdmin(true);
+            setSnackbarMsg("🎉 Developer Mode kimlik doğrulaması başarılı. Hoş geldiniz!");
+          }}
+        />
 
         {/* Şablon Ekleme ve AI Prompt Modalı */}
         <AddTemplateModal

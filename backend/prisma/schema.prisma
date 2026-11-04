@@ -24,5 +24,6 @@ model Analysis {
   riskScore       Int      // 0 - 100
   impactAreas     String   // JSON string
   recommendations String   // JSON string
+  persona         String   @default("qa")
   createdAt       DateTime @default(now())
 }

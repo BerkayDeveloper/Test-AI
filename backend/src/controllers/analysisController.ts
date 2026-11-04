@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { generateUniversalTestPlan } from "../services/testPlanGenerator";
+import { aiService } from "../services/aiService";
 import { dbService } from "../services/dbService";
 import { cleanTitle, cleanTestCase, cleanStepText } from "../utils/titleCleaner";
 
@@ -7,7 +8,18 @@ export const analysisController = {
   // POST /api/analyze
   async analyzeChange(req: Request, res: Response) {
     try {
-      const { title, category, previousContent, newContent, persona, saveToDb } = req.body;
+      const {
+        title,
+        category,
+        previousContent,
+        newContent,
+        persona,
+        saveToDb,
+        selectedScopes,
+        customScopes,
+        additionalNotes,
+        apiKey,
+      } = req.body;
 
       if (!title || typeof title !== "string" || title.trim().length === 0) {
         return res.status(400).json({ error: "Lütfen bir değişiklik veya görev başlığı girin." });
@@ -22,11 +34,21 @@ export const analysisController = {
       const safeCategory = typeof category === "string" && category.trim() ? category : "code";
       const safePersona = persona === "developer" ? "developer" : "qa";
 
-      // Test Adımları Motorunu Çalıştır
-      const testPlan = generateUniversalTestPlan(title, safeCategory, safeOldText, safeNewText, safePersona);
+      // En üst kalitede AI Test Adımları Motorunu Çalıştır (Gemini 3.8 Flash / CLI / Akıllı Fallback)
+      const testPlan = await aiService.generateDetailedTestPlanWithAI({
+        title,
+        category: safeCategory,
+        previousContent: safeOldText,
+        newContent: safeNewText,
+        persona: safePersona,
+        selectedScopes,
+        customScopes,
+        additionalNotes,
+        apiKey,
+      });
+
       testPlan.testCases = testPlan.testCases.map((tc) => cleanTestCase(tc, true));
 
-      const id = `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const riskLevel =
         testPlan.criticalTestCount >= 4 ? "CRITICAL" : testPlan.criticalTestCount >= 2 ? "HIGH" : "MEDIUM";
       const riskScore = Math.min(testPlan.criticalTestCount * 15 + 25, 95);
@@ -34,7 +56,7 @@ export const analysisController = {
       // Yalnızca saveToDb açıkça true olarak gönderilmişse veritabanına otomatik ekle
       if (saveToDb === true) {
         const saved = await dbService.createAnalysis({
-          id,
+          id: testPlan.id,
           title,
           category: safeCategory,
           previousContent: safeOldText,
@@ -47,6 +69,18 @@ export const analysisController = {
           persona: safePersona,
         });
 
+        const {
+          id: _planId,
+          createdAt: _planCreatedAt,
+          title: _planTitle,
+          category: _planCategory,
+          riskLevel: _planRiskLevel,
+          riskScore: _planRiskScore,
+          previousContent: _planOld,
+          newContent: _planNew,
+          persona: _planPersona,
+          ...restPlan
+        } = testPlan;
         return res.json({
           id: saved.id,
           title,
@@ -57,22 +91,18 @@ export const analysisController = {
           persona: safePersona,
           riskLevel,
           riskScore,
-          ...testPlan,
+          ...restPlan,
         });
       }
 
       // Varsayılan: Doğrudan test planlarına eklemeden önizleme için sonucu döndür
       return res.json({
-        id,
-        title,
-        category: safeCategory,
-        createdAt: new Date().toISOString(),
+        ...testPlan,
         previousContent: safeOldText,
         newContent: safeNewText,
         persona: safePersona,
         riskLevel,
         riskScore,
-        ...testPlan,
       });
     } catch (error: any) {
       console.error("Test adımları üretim hatası:", error);
@@ -176,10 +206,15 @@ export const analysisController = {
 
         const impactAreas = testCases.map((t) => t.title);
 
-        // Persona belirleme: Eğer kayıtta yoksa diffSummary veya overview içeriğindeki etiketten çıkar
+        // Persona belirleme: Eğer kayıtta yoksa akıllı tahmin yap
         const resolvedPersona: "qa" | "developer" =
           r.persona ||
-          (r.diffSummary.includes("[QA") || r.diffSummary.includes("Tester") ? "qa" : "developer");
+          (r.diffSummary.toLowerCase().includes("qa") ||
+          r.diffSummary.toLowerCase().includes("test") ||
+          r.title.toLowerCase().includes("qa") ||
+          r.category === "none"
+            ? "qa"
+            : "developer");
 
         return {
           id: r.id,
@@ -231,7 +266,11 @@ export const analysisController = {
 
       const resolvedPersona: "qa" | "developer" =
         record.persona ||
-        (record.diffSummary.includes("[QA") || record.diffSummary.includes("Tester") ? "qa" : "developer");
+        (record.diffSummary.toLowerCase().includes("qa") ||
+        record.diffSummary.toLowerCase().includes("test") ||
+        record.title.toLowerCase().includes("qa")
+          ? "qa"
+          : "developer");
 
       return res.json({
         id: record.id,
@@ -270,26 +309,29 @@ export const analysisController = {
   async updateAnalysis(req: Request, res: Response) {
     try {
       const { id } = req.params;
-      const { title, category, diffSummary, testCases } = req.body;
+      const { title, category, diffSummary, testCases, riskLevel: customRiskLevel } = req.body;
 
       const updateData: any = {};
       if (typeof title === "string") updateData.title = title;
       if (typeof category === "string") updateData.category = category;
       if (typeof diffSummary === "string") updateData.diffSummary = diffSummary;
 
+      let criticalCount = 0;
       if (Array.isArray(testCases)) {
         const cleanedCases = testCases.map((tc: any) => cleanTestCase(tc, true));
         updateData.recommendations = JSON.stringify(cleanedCases);
         updateData.impactAreas = JSON.stringify(cleanedCases.map((t: any) => t.title || ""));
-        const criticalCount = cleanedCases.filter(
+        criticalCount = cleanedCases.filter(
           (t: any) =>
             t.priority?.includes("Kritik") ||
             t.priority?.includes("Yüksek") ||
             t.priority?.includes("P1") ||
             t.priority?.includes("P2")
         ).length;
-        updateData.riskLevel = criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM";
+        updateData.riskLevel = customRiskLevel || (criticalCount >= 4 ? "CRITICAL" : criticalCount >= 2 ? "HIGH" : "MEDIUM");
         updateData.riskScore = Math.min(criticalCount * 15 + 25, 95);
+      } else if (typeof customRiskLevel === "string" && customRiskLevel.trim()) {
+        updateData.riskLevel = customRiskLevel;
       }
 
       const updated = await dbService.updateAnalysis(id, updateData);
@@ -314,7 +356,12 @@ export const analysisController = {
         createdAt: updated.createdAt.toISOString(),
         testCases: parsedCases,
         totalTestCount: parsedCases.length,
-        persona: updated.persona || (updated.diffSummary.includes("[QA") ? "qa" : "developer"),
+        persona:
+          updated.persona ||
+          (updated.diffSummary.toLowerCase().includes("qa") ||
+          updated.diffSummary.toLowerCase().includes("test")
+            ? "qa"
+            : "developer"),
       });
     } catch (error: any) {
       return res.status(500).json({ error: "Analiz güncellenemedi: " + error.message });

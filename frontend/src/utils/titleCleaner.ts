@@ -145,7 +145,7 @@ export function stripVideoTimestamps(text: string = ""): string {
 
 /**
  * Bir test senaryosundaki tekrarlanan veya gereksiz alt adımları ayıklar
- * ve sıralı numaralandırma (Adım 1, Adım 2...) uygular.
+ * ve sıralı numaralandırma (Adım 1, Adım 2...) uygulayarak her adımın %100 özgün olmasını sağlar.
  */
 export function deduplicateSteps(steps: string[] = []): string[] {
   if (!Array.isArray(steps) || steps.length === 0) return [];
@@ -159,14 +159,15 @@ export function deduplicateSteps(steps: string[] = []): string[] {
     const trimmed = rawStep.trim();
     if (!trimmed) continue;
 
-    // Gereksiz durağan/sabit durum veya telemetri adımlarını tamamen atla
     const lower = trimmed.toLowerCase();
+    // Gereksiz durağan/sabit durum veya telemetri adımlarını tamamen atla
     if (
       lower.includes("görünümü stabil devam ediyor") ||
       lower.includes("mikro değişim") ||
       lower.includes("sabit ekran") ||
       lower.includes("hareketsizliği / bekleme") ||
-      lower.includes("değişim yok")
+      lower.includes("değişim yok") ||
+      lower.includes("değişiklik tespit edilmedi")
     ) {
       continue;
     }
@@ -184,29 +185,47 @@ export function deduplicateSteps(steps: string[] = []): string[] {
 
     if (normalized.length < 5) continue;
 
-    // Kelime kümesi benzerliği kontrolü (Jaccard > %75 ise mükerrer sayılır)
-    const words = new Set(normalized.split(" ").filter((w) => w.length > 2));
-    let isSemanticDuplicate = false;
+    // Kelime kümesi benzerliği ve alt cümle kontrolü
+    const words = new Set(
+      normalized
+        .split(" ")
+        .filter((w) => w.length > 2 && !["için", "olan", "veya", "gibi", "kadar", "sonra", "önce", "üzere", "doğrulayın", "kontrol", "edin"].includes(w))
+    );
 
+    let isDuplicate = false;
+
+    // 1. Birebir aynı normalizasyon
     if (seen.has(normalized)) {
-      isSemanticDuplicate = true;
+      isDuplicate = true;
     } else {
-      for (const prevWords of seenWordSets) {
-        let intersection = 0;
-        words.forEach((w) => {
-          if (prevWords.has(w)) intersection++;
-        });
-        const union = new Set([...words, ...prevWords]).size;
-        if (union > 0 && intersection / union > 0.75) {
-          isSemanticDuplicate = true;
+      // 2. Bir önceki adımın neredeyse aynısı veya alt cümlesi mi?
+      for (const prev of seen) {
+        if (prev.includes(normalized) || normalized.includes(prev)) {
+          isDuplicate = true;
           break;
+        }
+      }
+
+      // 3. Kelime benzerliği kontrolü (Örtüşme eşiği %55)
+      if (!isDuplicate && words.size > 0) {
+        for (const prevWords of seenWordSets) {
+          let intersection = 0;
+          words.forEach((w) => {
+            if (prevWords.has(w)) intersection++;
+          });
+          const minLen = Math.min(words.size, prevWords.size);
+          const union = new Set([...words, ...prevWords]).size;
+          if (minLen > 0 && (intersection / minLen > 0.6 || intersection / union > 0.55)) {
+            isDuplicate = true;
+            break;
+          }
         }
       }
     }
 
-    if (!isSemanticDuplicate) {
+    if (!isDuplicate) {
       seen.add(normalized);
-      seenWordSets.push(words);
+      if (words.size > 0) seenWordSets.push(words);
       uniqueSteps.push(trimmed);
     }
   }
@@ -238,6 +257,15 @@ function humanizeStepLanguage(text: string): string {
   s = s.replace(/\bCLS\b/g, "ekran düzeni kayması");
   s = s.replace(/DİKKAT:\s*/gi, "");
   s = s.replace(/Saniye Saniye\s*/gi, "");
+
+  // "Ekran 1", "Ekran 2" gibi genel ve numaralı ekran kalıplarını temizle veya spesifikleştir
+  s = s.replace(/\bEkran\s*\d+\s*[-:–—]+\s*/gi, "");
+  s = s.replace(/\bScreen\s*\d+\s*[-:–—]+\s*/gi, "");
+  s = s.replace(/\bEkran\s*1\b/gi, "Açılış ve Ana Etkileşim Arayüzü");
+  s = s.replace(/\bEkran\s*2\b/gi, "İşlem ve Detay Arayüzü");
+  s = s.replace(/\bEkran\s*3\b/gi, "Form ve Doğrulama Arayüzü");
+  s = s.replace(/\bEkran\s*4\b/gi, "Sonuç ve Onay Arayüzü");
+  s = s.replace(/\bEkran\s*\d+\b/gi, "İlgili Arayüz Alanı");
 
   // Arayüz bölgelerini doğal Türkçe ifadelere dönüştür
   s = s.replace(/Merkez Form\s*\/\s*Ana İçerik Alanı/gi, "Ana form ve içerik alanı");
@@ -407,6 +435,8 @@ export function cleanTitle(title: string = "", isAdmin: boolean = false): string
 
   // 6. Dış tırnakları ve gereksiz ayraçları temizle
   t = t.replace(/^["'“”]+|["'“”]+$/g, "").trim();
+  t = t.replace(/\bEkran\s*\d+\s*[-:–—]+\s*/gi, "");
+  t = t.replace(/\bScreen\s*\d+\s*[-:–—]+\s*/gi, "");
   t = t.replace(/^[-:–—\s]+/, "");
   t = t.replace(/[-:–—\s]+$/, "");
   t = t.replace(/\s{2,}/g, " ");
@@ -469,6 +499,8 @@ export function cleanTestCase(tc: any, isAdmin: boolean = false): any {
   let cleanedTarget = tc.targetComponent ? cleanStepText(tc.targetComponent, isAdmin) : undefined;
   if (cleanedTarget) {
     cleanedTarget = cleanedTarget.replace(/^(?:Video|Fotoğraf|Görsel)\s*\d*[\s:-]*/i, "").trim();
+    cleanedTarget = cleanedTarget.replace(/\bEkran\s*\d+\s*[-:–—]+\s*/gi, "").trim();
+    cleanedTarget = cleanedTarget.replace(/\bEkran\s*\d+\b/gi, "Arayüz Bileşeni").trim();
     cleanedTarget = cleanedTarget.replace(/^[-:–—\s]+/, "").trim();
     if (!cleanedTarget) cleanedTarget = "Ana Arayüz Bileşenleri";
   }

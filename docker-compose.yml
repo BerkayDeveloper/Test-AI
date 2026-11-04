@@ -27,6 +27,8 @@ services:
     restart: unless-stopped
     environment:
       - VITE_API_URL=http://localhost:5001
+      - VITE_BACKEND_INTERNAL_URL=http://backend:5001
+      - DOCKER_CONTAINER=true
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:

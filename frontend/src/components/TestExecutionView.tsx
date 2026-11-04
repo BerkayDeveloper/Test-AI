@@ -17,6 +17,7 @@ import {
   cleanTitle,
   cleanStepText,
   formatStepForDisplay,
+  deduplicateSteps,
 } from "../utils/titleCleaner";
 
 interface TestExecutionViewProps {
@@ -411,7 +412,7 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
                   Çalıştırılacak Test Adımları:
                 </Typography>
                 <Stack spacing={0.5}>
-                  {tc.steps.map((rawStep, sIdx) => {
+                  {deduplicateSteps(tc.steps).map((rawStep, sIdx) => {
                     const isChecked = currentExec.completedSteps?.includes(sIdx);
                     const formatted = formatStepForDisplay(rawStep, isAdmin);
                     return (

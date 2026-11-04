@@ -10,6 +10,7 @@ import {
   TextField,
   InputAdornment,
   Alert,
+  CircularProgress,
   IconButton,
   Tooltip,
   Box,
@@ -38,6 +39,17 @@ interface HistoryArchiveProps {
   isAdmin?: boolean;
 }
 
+export function resolveItemPersona(item: { persona?: string; diffSummary?: string; title?: string; category?: string }): "qa" | "developer" {
+  if (item.persona === "qa" || item.persona === "developer") {
+    return item.persona;
+  }
+  const s = `${item.diffSummary || ""} ${item.title || ""} ${item.category || ""}`.toLowerCase();
+  if (s.includes("qa") || s.includes("test") || s.includes("video") || s.includes("senaryo") || s.includes("functional") || item.category === "none") {
+    return "qa";
+  }
+  return "developer";
+}
+
 export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
   history = [],
   onInspectPlan,
@@ -56,14 +68,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
 
   // Mod İzolasyonu: Sadece aktif persona (QA ise QA testleri, Developer ise Dev testleri) listelenir
   const modeFilteredHistory = activePersona
-    ? safeHistory.filter((item) => {
-        const itemPersona =
-          item.persona ||
-          (item.diffSummary?.includes("QA") || item.diffSummary?.includes("Tester")
-            ? "qa"
-            : "developer");
-        return itemPersona === activePersona;
-      })
+    ? safeHistory.filter((item) => resolveItemPersona(item) === activePersona)
     : safeHistory;
 
   const filteredHistory = modeFilteredHistory.filter((h) => {
@@ -91,11 +96,7 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
       steps: deduplicateSteps((tc.steps || []).map((s: string) => cleanStepText(s, isAdmin))),
       expectedResult: cleanStepText(tc.expectedResult || "", isAdmin),
     }));
-    const resolvedPersona =
-      item.persona ||
-      (item.diffSummary?.includes("QA") || item.diffSummary?.includes("Tester")
-        ? "qa"
-        : "developer");
+    const resolvedPersona = resolveItemPersona(item);
 
     return {
       id: item.id,
@@ -148,7 +149,14 @@ export const HistoryArchive: React.FC<HistoryArchiveProps> = ({
           />
         </Stack>
 
-        {filteredHistory.length === 0 ? (
+        {loading ? (
+          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", py: 4, gap: 1.5 }}>
+            <CircularProgress size={24} sx={{ color: "#38bdf8" }} />
+            <Typography variant="body2" sx={{ color: "#94a3b8" }}>
+              Test planları yükleniyor...
+            </Typography>
+          </Box>
+        ) : filteredHistory.length === 0 ? (
           <Alert severity="info" sx={{ background: "rgba(14, 165, 233, 0.1)", color: "#7dd3fc" }}>
             {modeFilteredHistory.length === 0
               ? activePersona === "qa"

@@ -27,3 +27,12 @@ model Analysis {
   persona         String   @default("qa")
   createdAt       DateTime @default(now())
 }
+
+model TestExecution {
+  id             String   @id @default(uuid())
+  analysisId     String   @unique
+  executionState String   // JSON string of Record<string, TestCaseExecutionStateItem>
+  overallStatus  String   @default("in_progress")
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+}

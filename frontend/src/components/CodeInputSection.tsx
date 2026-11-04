@@ -41,6 +41,7 @@ import {
 } from "../utils/persistentStorage";
 import { generateClientSideTestPlan } from "../utils/clientTestPlanGenerator";
 import { api } from "../services/api";
+import { sanitizeClientSensitiveData } from "../utils/secretSanitizer";
 
 const InfoIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: "middle" }}>
@@ -266,6 +267,25 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   // Tür Yönetimi & Ekleme Dialogu State'i
   const [openCategoryManageDialog, setOpenCategoryManageDialog] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [sanitizedNotice, setSanitizedNotice] = useState<string | null>(null);
+
+  const handleSanitizeInputs = () => {
+    const resNew = sanitizeClientSensitiveData(newContent || promptText || fileContent || "");
+    const resPrev = sanitizeClientSensitiveData(previousContent || fileOldContent || "");
+    const totalMasked = resNew.maskedCount + resPrev.maskedCount;
+    if (totalMasked > 0) {
+      if (newContent) setNewContent(resNew.sanitizedText);
+      if (promptText) setPromptText(resNew.sanitizedText);
+      if (fileContent) setFileContent(resNew.sanitizedText);
+      if (previousContent) setPreviousContent(resPrev.sanitizedText);
+      if (fileOldContent) setFileOldContent(resPrev.sanitizedText);
+      setSanitizedNotice(`🛡️ ${totalMasked} adet hassas veri (API Key, Şifre, vb.) başarıyla maskelendi!`);
+      setTimeout(() => setSanitizedNotice(null), 4000);
+    } else {
+      setSanitizedNotice("✓ İçerikte tespit edilen açık bir hassas veri (API Key / Şifre) bulunamadı. İçerik güvenli.");
+      setTimeout(() => setSanitizedNotice(null), 3500);
+    }
+  };
 
   const handleAddCategory = () => {
     const trimmed = newCategoryName.trim();
@@ -922,6 +942,10 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
   const [fileContent, setFileContent] = useState("");
   const [fileOldContent, setFileOldContent] = useState("");
   const [compareMode, setCompareMode] = useState<"single" | "dual">("single");
+  // Developer Modu Kod Karşılaştırma Veri Girişi:
+  // 1. "single": Tek bir veri girebilme
+  // 2. "dual": Önceki ve Yeni durum (Önceki durum isteğe bağlıdır, kullanıcı dilerse doldurur dilerse boş bırakır)
+  const [devCompareType, setDevCompareType] = useState<"single" | "dual">("dual");
   const [parsedOldFileInfo, setParsedOldFileInfo] = useState<ParsedDocumentResult | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1086,7 +1110,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
 
   // Otomatik Periyodik Arka Plan Kaydetme (Değişiklik olduğunda 1.2 sn sonra)
   useEffect(() => {
-    if (!title && !promptText && !fileContent && mediaList.length === 0 && !newContent) return;
+    if (!title && !promptText && !fileContent && mediaList.length === 0 && !newContent && !previousContent) return;
     const timer = setTimeout(() => {
       triggerSaveComprehensiveDraft();
     }, 1200);
@@ -2561,54 +2585,195 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
             <TemplateSelector
               templates={templates}
               defaultTemplatesCount={defaultTemplatesCount}
-              onSelectTemplate={onSelectTemplate}
+              onSelectTemplate={(tpl) => {
+                onSelectTemplate(tpl);
+                if (tpl.oldCode && tpl.newCode) {
+                  setDevCompareType("dual");
+                } else if (tpl.newCode) {
+                  setDevCompareType("dual");
+                }
+              }}
               onOpenModal={onOpenModal}
               onDeleteCustomTemplate={onDeleteCustomTemplate}
               isQa={false}
             />
 
-            <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600, display: "block", mb: 0.5 }}>
-              1. Önceki Durum (Orijinal Kod / Veri) — <span style={{ color: "#06b6d4" }}>(Yeni özellik eklerken boş bırakılabilir)</span>
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={hasResult ? 4 : 6}
-              value={previousContent}
-              onChange={(e) => setPreviousContent(e.target.value)}
-              placeholder="Mevcut eski kodu buraya yapıştırın veya sıfırdan ekliyorsanız boş bırakın..."
+            {/* Veri Giriş Seçicisi (1. Tek Veri / Kod Girişi vs 2. Önceki & Yeni Durum Karşılaştırma) */}
+            <Box
               sx={{
-                mb: 2,
-                "& .MuiInputBase-root": {
-                  fontFamily: "monospace",
-                  fontSize: "0.82rem",
-                  backgroundColor: "rgba(0,0,0,0.3)",
-                },
+                p: 1.5,
+                mb: 2.5,
+                borderRadius: 2.5,
+                background: "rgba(15, 23, 42, 0.75)",
+                border: "1px solid rgba(16, 185, 129, 0.25)",
+                boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
               }}
-            />
+            >
+              <Stack
+                direction={{ xs: "column", sm: "row" }}
+                justifyContent="space-between"
+                alignItems={{ xs: "flex-start", sm: "center" }}
+                spacing={1.5}
+                sx={{ mb: 1.2 }}
+              >
+                <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 800, fontSize: "0.8rem", display: "flex", alignItems: "center", gap: 0.8 }}>
+                  <span>⚙️</span> Kod & Veri Giriş Türü:
+                </Typography>
 
-            <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600, display: "block", mb: 0.5 }}>
-              2. Yeni Durum (Değiştirilen / Eklenen Kod)
-            </Typography>
-            <TextField
-              fullWidth
-              multiline
-              rows={hasResult ? 5 : 7}
-              value={newContent}
-              onChange={(e) => setNewContent(e.target.value)}
-              placeholder="Yeni eklenen veya güncellenen kodları buraya yapıştırın..."
-              sx={{
-                mb: 2,
-                "& .MuiInputBase-root": {
-                  fontFamily: "monospace",
-                  fontSize: "0.82rem",
-                  backgroundColor: "rgba(0,0,0,0.3)",
-                },
-              }}
-            />
+                <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                  {/* 1. Tür: Tek bir veri girebilme */}
+                  <Chip
+                    label="1. Tek Veri / Kod Girişi"
+                    size="small"
+                    variant={devCompareType === "single" ? "filled" : "outlined"}
+                    color={devCompareType === "single" ? "success" : "default"}
+                    onClick={() => {
+                      setDevCompareType("single");
+                      if (!newContent.trim() && previousContent.trim()) {
+                        setNewContent(previousContent);
+                        setPreviousContent("");
+                      }
+                    }}
+                    sx={{
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      px: 0.5,
+                      ...(devCompareType === "single"
+                        ? {
+                            background: "linear-gradient(90deg, #10b981, #059669)",
+                            color: "#ffffff",
+                            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                          }
+                        : {
+                            borderColor: "rgba(255, 255, 255, 0.2)",
+                            color: "#94a3b8",
+                            "&:hover": { borderColor: "#10b981", color: "#34d399" },
+                          }),
+                    }}
+                  />
 
-            {/* Kod Diff Görüntüleyici */}
-            <DiffViewer oldCode={previousContent} newCode={newContent} />
+                  {/* 2. Tür: 2 ve 3'ün birleşimi - Önceki & Yeni Durum (Önceki İsteğe Bağlı) */}
+                  <Chip
+                    label="2. Önceki & Yeni Durum (Karşılaştırma)"
+                    size="small"
+                    variant={devCompareType === "dual" ? "filled" : "outlined"}
+                    color={devCompareType === "dual" ? "success" : "default"}
+                    onClick={() => setDevCompareType("dual")}
+                    sx={{
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      px: 0.5,
+                      ...(devCompareType === "dual"
+                        ? {
+                            background: "linear-gradient(90deg, #10b981, #059669)",
+                            color: "#ffffff",
+                            boxShadow: "0 2px 8px rgba(16, 185, 129, 0.35)",
+                          }
+                        : {
+                            borderColor: "rgba(255, 255, 255, 0.2)",
+                            color: "#94a3b8",
+                            "&:hover": { borderColor: "#10b981", color: "#34d399" },
+                          }),
+                    }}
+                  />
+                </Stack>
+              </Stack>
+
+              <Typography variant="caption" sx={{ color: "#94a3b8", fontSize: "0.74rem", display: "block", pl: 0.5 }}>
+                {devCompareType === "single"
+                  ? "💡 1. Tek Veri Modu: Yalnızca tek bir kod veya veri bloğunu analiz eder (Sınıf, metot, SQL veya mimari blok)."
+                  : "💡 2. Önceki & Yeni Durum Modu: Yeni kod girilir; Önceki Durum tamamen isteğe bağlıdır (ister diff için eski kodu girin, ister sıfırdan özellik için boş bırakın)."}
+                {" • "}
+                <b style={{ color: "#38bdf8" }}>Kural: En az bir alanda veri olması analizi başlatmak için yeterlidir.</b>
+              </Typography>
+            </Box>
+
+            {/* 1. TÜRE GÖRE GÖRÜNÜM: TEK BİR VERİ */}
+            {devCompareType === "single" && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, display: "block", mb: 0.5 }}>
+                  İncelenecek Kod / Veri (Tek Kod Bloğu) *
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={hasResult ? 6 : 9}
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="İncelemek istediğiniz tek kod bloğunu veya veri parçasını buraya yapıştırın (Sınıf, fonksiyon, SQL, API modeli vb.)..."
+                  sx={{
+                    "& .MuiInputBase-root": {
+                      fontFamily: "monospace",
+                      fontSize: "0.82rem",
+                      backgroundColor: "rgba(0,0,0,0.3)",
+                    },
+                  }}
+                />
+              </Box>
+            )}
+
+            {/* 2. TÜRE GÖRE GÖRÜNÜM: ÖNCEKİ VE YENİ DURUM (ÖNCEKİ İSTEĞE BAĞLI) */}
+            {devCompareType === "dual" && (
+              <Box sx={{ mb: 2 }}>
+                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 0.5 }}>
+                  <Typography variant="caption" sx={{ color: "#94a3b8", fontWeight: 600 }}>
+                    1. Önceki Durum (Orijinal Kod / Veri) — <span style={{ color: "#34d399", fontWeight: 700 }}>(İsteğe Bağlı / Boş Bırakılabilir)</span>
+                  </Typography>
+                  {previousContent.trim().length > 0 && (
+                    <Button
+                      size="small"
+                      onClick={() => setPreviousContent("")}
+                      sx={{ fontSize: "0.7rem", color: "#f87171", py: 0, textTransform: "none" }}
+                    >
+                      Önceki Kodu Temizle
+                    </Button>
+                  )}
+                </Box>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={hasResult ? 4 : 6}
+                  value={previousContent}
+                  onChange={(e) => setPreviousContent(e.target.value)}
+                  placeholder="İsteğe bağlı: Mevcut eski kodu buraya yapıştırabilir veya sıfırdan ekliyorsanız boş bırakabilirsiniz..."
+                  sx={{
+                    mb: 2,
+                    "& .MuiInputBase-root": {
+                      fontFamily: "monospace",
+                      fontSize: "0.82rem",
+                      backgroundColor: "rgba(0,0,0,0.3)",
+                    },
+                  }}
+                />
+
+                <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, display: "block", mb: 0.5 }}>
+                  2. Yeni Durum (Değiştirilen / Eklenen Kod) *
+                </Typography>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={hasResult ? 5 : 7}
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="Yeni eklenen veya güncellenen kodları buraya yapıştırın..."
+                  sx={{
+                    mb: 2,
+                    "& .MuiInputBase-root": {
+                      fontFamily: "monospace",
+                      fontSize: "0.82rem",
+                      backgroundColor: "rgba(0,0,0,0.3)",
+                    },
+                  }}
+                />
+
+                {/* Eğer önceki kod varsa diff görüntüle */}
+                {previousContent.trim().length > 0 && newContent.trim().length > 0 && (
+                  <DiffViewer oldCode={previousContent} newCode={newContent} />
+                )}
+              </Box>
+            )}
           </Box>
         )}
 
@@ -3003,7 +3168,7 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
               ? !fileContent.trim()
               : isQa
               ? mediaList.length === 0 && !mediaNotes.trim() && !newContent.trim()
-              : !newContent.trim())
+              : (!newContent.trim() && !previousContent.trim()))
           }
           sx={{
             py: 1.5,
@@ -3043,10 +3208,36 @@ export const CodeInputSection: React.FC<CodeInputSectionProps> = ({
                 ? `🎯 En Üst Kalitede Analiz Et ve Test Adımlarını Oluştur (${mediaList.length} Medya${dynamicScopes.length > 0 ? `, ${dynamicScopes.filter((s) => s.selected).length} Kapsam` : ""})`
                 : isQa
                 ? "QA Test Adımlarını Oluştur"
-                : "Geliştirici Test Adımlarını Oluştur"
+                : devCompareType === "single"
+                ? "Tek Kod Bloğunu Analiz Et ve Test Adımları Üret"
+                : previousContent.trim().length > 0
+                ? "Kod Karşılaştırmasını Başlat ve Test Adımları Üret"
+                : "Yeni Kodu Analiz Et ve Test Adımları Üret"
             }`
           )}
         </Button>
+
+        {sanitizedNotice && (
+          <Alert severity="info" sx={{ mt: 1.5, fontSize: "0.82rem" }}>
+            {sanitizedNotice}
+          </Alert>
+        )}
+
+        <Stack direction="row" justifyContent="flex-end" sx={{ mt: 1 }}>
+          <Button
+            size="small"
+            variant="text"
+            onClick={handleSanitizeInputs}
+            sx={{
+              color: "#94a3b8",
+              fontSize: "0.78rem",
+              textTransform: "none",
+              "&:hover": { color: "#38bdf8", background: "rgba(56, 189, 248, 0.08)" },
+            }}
+          >
+            🛡️ Hassas Veri & API Key Maskele (Sanitize)
+          </Button>
+        </Stack>
 
         {/* Yeni Özel Test Kapsamı Ekleme Dialogu */}
         <Dialog

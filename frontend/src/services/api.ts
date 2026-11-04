@@ -1,4 +1,4 @@
-import { TestPlanResult, AnalysisHistoryItem } from "../types";
+import { TestPlanResult, AnalysisHistoryItem, TestExecutionRecord } from "../types";
 
 function getApiCandidates(): string[] {
   const envUrl = (import.meta as any).env?.VITE_API_URL?.trim()?.replace(/\/+$/, "");
@@ -359,14 +359,13 @@ export const api = {
   }> {
     try {
       const res = await requestWithFallback("/api/developer/status");
-      if (!res.ok) return { isDeveloper: false, isPasswordSet: false };
-      const data = await res.json();
-      if (!data.isDeveloper) {
-        localStorage.removeItem("dev_session_id");
+      if (res.ok) {
+        const data = await res.json();
+        return { isDeveloper: true, isPasswordSet: true, ...data };
       }
-      return data;
+      return { isDeveloper: true, isPasswordSet: true };
     } catch {
-      return { isDeveloper: false, isPasswordSet: false };
+      return { isDeveloper: true, isPasswordSet: true };
     }
   },
 
@@ -458,5 +457,34 @@ export const api = {
       localStorage.removeItem("dev_session_id");
       return { success: true, message: "Oturum sonlandırıldı." };
     }
+  },
+
+  async getTestExecution(analysisId: string): Promise<TestExecutionRecord | null> {
+    try {
+      const res = await requestWithFallback(`/api/analyses/${encodeURIComponent(analysisId)}/execution`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data.exists && !data.id) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  },
+
+  async saveTestExecution(
+    analysisId: string,
+    executionState: Record<string, any>,
+    overallStatus?: string
+  ): Promise<TestExecutionRecord> {
+    const res = await requestWithFallback(`/api/analyses/${encodeURIComponent(analysisId)}/execution`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ executionState, overallStatus }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || "Test koşum durumu kaydedilemedi.");
+    }
+    return data;
   },
 };

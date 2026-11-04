@@ -1,7 +1,7 @@
 import { TestPlanResult, TestCase } from "../types";
 import { DynamicTestScopeOption } from "./dynamicScopeDetector";
 import { ExtractedMediaTelemetry } from "./videoFrameAnalyzer";
-import { deduplicateSteps, cleanTestCase } from "./titleCleaner";
+import { deduplicateSteps, cleanTestCase, deduplicateAndMergeTestCases } from "./titleCleaner";
 
 export interface ClientTestPlanInput {
   title: string;
@@ -302,12 +302,8 @@ export function generateClientSideTestPlan(input: ClientTestPlanInput): TestPlan
     });
   }
 
-  // Her test senaryosundaki adımları mükerrerlikten arındır ve %100 özgün olmasını sağla
-  const uniqueTestCases = testCases.map((tc) => {
-    const cleaned = cleanTestCase(tc, true);
-    cleaned.steps = deduplicateSteps(cleaned.steps);
-    return cleaned;
-  });
+  // Kural 1 & 2: Tekrar eden test adımlarını birleştir ve uygulama adımlarını konsolide et
+  const uniqueTestCases = deduplicateAndMergeTestCases(testCases, true, "QA-TC");
 
   const criticalCount = uniqueTestCases.filter((tc) => tc.priority === "Kritik").length;
   const overview = `QA Medya Analizi: Toplam ${mediaList.length} medya ve ${activeScopes.length} aktif test kapsamı doğrulanarak ${uniqueTestCases.length} adet detaylı QA test senaryosu başarıyla oluşturuldu.\n` +

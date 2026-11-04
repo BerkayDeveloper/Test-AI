@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { AnalysisRecord } from "../types";
+import { AnalysisRecord, TestExecutionRecord, TestCaseExecutionStateItem } from "../types";
 import fs from "fs";
 import path from "path";
 
@@ -8,8 +8,10 @@ const prisma = new PrismaClient();
 // Kalıcı yerel disk dosya deposu (PostgreSQL bağlantısı kesilse veya kapansa bile verilerin asla kaybolmaması için)
 const DATA_DIR = path.join(__dirname, "../../data");
 const DISK_FILE = path.join(DATA_DIR, "analyses_db.json");
+const EXECUTIONS_DISK_FILE = path.join(DATA_DIR, "executions_db.json");
 
 const inMemoryAnalyses: Map<string, AnalysisRecord> = new Map();
+const inMemoryExecutions: Map<string, TestExecutionRecord> = new Map();
 let isPrismaAvailable = false;
 
 // Diskten mevcut kayıtları yükle
@@ -31,6 +33,17 @@ function loadFromDisk(): void {
         console.log(`📂 Yerel disk deposundan ${list.length} adet analiz kaydı yüklendi.`);
       }
     }
+
+    if (fs.existsSync(EXECUTIONS_DISK_FILE)) {
+      const rawExec = fs.readFileSync(EXECUTIONS_DISK_FILE, "utf-8");
+      const execList = JSON.parse(rawExec);
+      if (Array.isArray(execList)) {
+        execList.forEach((item: TestExecutionRecord) => {
+          inMemoryExecutions.set(item.analysisId, item);
+        });
+        console.log(`📂 Yerel disk deposundan ${execList.length} adet test koşum (execution) kaydı yüklendi.`);
+      }
+    }
   } catch (err: any) {
     console.warn("Yerel disk deposu okunurken hata:", err.message);
   }
@@ -45,7 +58,19 @@ function saveToDisk(): void {
     const list = Array.from(inMemoryAnalyses.values());
     fs.writeFileSync(DISK_FILE, JSON.stringify(list, null, 2), "utf-8");
   } catch (err: any) {
-    console.warn("Yerel diske kaydedilirken hata:", err.message);
+    console.warn("Yerel diske analizler kaydedilirken hata:", err.message);
+  }
+}
+
+function saveExecutionsToDisk(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const list = Array.from(inMemoryExecutions.values());
+    fs.writeFileSync(EXECUTIONS_DISK_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (err: any) {
+    console.warn("Yerel diske test koşumları kaydedilirken hata:", err.message);
   }
 }
 
@@ -72,7 +97,17 @@ async function ensureSchema(): Promise<void> {
     await prisma.$executeRawUnsafe(`
       ALTER TABLE "Analysis" ADD COLUMN IF NOT EXISTS "persona" TEXT DEFAULT 'qa'
     `);
-    console.log("✅ PostgreSQL şeması ve 'persona' sütunu doğrulandı.");
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "TestExecution" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "analysisId" TEXT NOT NULL UNIQUE,
+        "executionState" TEXT NOT NULL,
+        "overallStatus" TEXT NOT NULL DEFAULT 'in_progress',
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log("✅ PostgreSQL şeması ve tablolar doğrulandı.");
   } catch (err: any) {
     console.warn("PostgreSQL şema kontrolü uyarısı:", err.message);
   }
@@ -312,6 +347,72 @@ export const dbService = {
     inMemoryAnalyses.set(id, updatedRecord);
     saveToDisk();
     return updatedRecord;
+  },
+
+  async getExecution(analysisId: string): Promise<TestExecutionRecord | null> {
+    if (isPrismaAvailable) {
+      try {
+        const rows: any[] = await prisma.$queryRawUnsafe(
+          `SELECT * FROM "TestExecution" WHERE "analysisId" = $1 LIMIT 1`,
+          analysisId
+        );
+        if (rows && rows.length > 0) {
+          const row = rows[0];
+          return {
+            id: row.id,
+            analysisId: row.analysisId,
+            executionState: typeof row.executionState === "string" ? JSON.parse(row.executionState) : row.executionState,
+            overallStatus: row.overallStatus,
+            updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : String(row.updatedAt),
+          };
+        }
+      } catch (err: any) {
+        console.warn("PostgreSQL getExecution hatası, yerel diske bakılıyor:", err.message);
+      }
+    }
+
+    return inMemoryExecutions.get(analysisId) || null;
+  },
+
+  async saveExecution(
+    analysisId: string,
+    executionState: Record<string, TestCaseExecutionStateItem>,
+    overallStatus: "pending" | "in_progress" | "passed" | "failed" = "in_progress"
+  ): Promise<TestExecutionRecord> {
+    const updatedAt = new Date().toISOString();
+    const existing = inMemoryExecutions.get(analysisId);
+    const id = existing?.id || `exec-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    const record: TestExecutionRecord = {
+      id,
+      analysisId,
+      executionState,
+      overallStatus,
+      updatedAt,
+    };
+
+    inMemoryExecutions.set(analysisId, record);
+    saveExecutionsToDisk();
+
+    if (isPrismaAvailable) {
+      try {
+        const jsonState = JSON.stringify(executionState);
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "TestExecution" ("id", "analysisId", "executionState", "overallStatus", "updatedAt", "createdAt")
+           VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+           ON CONFLICT ("analysisId") DO UPDATE 
+           SET "executionState" = $3, "overallStatus" = $4, "updatedAt" = CURRENT_TIMESTAMP`,
+          id,
+          analysisId,
+          jsonState,
+          overallStatus
+        );
+      } catch (err: any) {
+        console.warn("PostgreSQL saveExecution hatası, yerel diske yazıldı:", err.message);
+      }
+    }
+
+    return record;
   },
 
   async isHealthy(): Promise<boolean> {

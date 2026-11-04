@@ -26,6 +26,7 @@ import {
 } from "@mui/material";
 import { TestPlanResult, TestCase } from "../types";
 import { cleanTitle, cleanStepText, cleanOverview, formatStepForDisplay } from "../utils/titleCleaner";
+import { ExportAutomationModal } from "./ExportAutomationModal";
 
 interface TestPlanViewProps {
   testPlan: TestPlanResult;
@@ -67,6 +68,7 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({
 
   const [copiedMd, setCopiedMd] = useState(false);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
   const [selectedFramePreview, setSelectedFramePreview] = useState<{ url: string; title: string } | null>(null);
 
   // Test Senaryosu Düzenleme Modalı State
@@ -575,6 +577,18 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({
                 sx={{ textTransform: "none", borderColor: "rgba(255,255,255,0.2)" }}
               >
                 📊 CSV İndir
+              </Button>
+              <Button
+                variant="contained"
+                size="small"
+                onClick={() => setExportModalOpen(true)}
+                sx={{
+                  textTransform: "none",
+                  fontWeight: 700,
+                  background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+                }}
+              >
+                ⚡ Otomasyon Kodu
               </Button>
             </Stack>
           </Stack>
@@ -1835,6 +1849,13 @@ export const TestPlanView: React.FC<TestPlanViewProps> = ({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Otomasyon Kodu Dışa Aktarma Modalı */}
+      <ExportAutomationModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        plan={testPlan}
+      />
     </Stack>
   );
 };

@@ -1,6 +1,6 @@
 import { TestCase } from "../types";
 import { parseCodeEntities, detectLanguage, computeDiffStats } from "./codeAnalyzerService";
-import { cleanSubject, formatDirectiveTitle, cleanStepText, cleanTestCase, cleanOverview } from "../utils/titleCleaner";
+import { cleanSubject, formatDirectiveTitle, cleanStepText, cleanTestCase, cleanOverview, deduplicateAndMergeTestCases } from "../utils/titleCleaner";
 
 export interface GeneratedPlan {
   overview: string;
@@ -696,7 +696,363 @@ export function generateUniversalTestPlan(
 
   return {
     ...plan,
-    overview: cleanOverview(plan.overview),
-    testCases: plan.testCases.map((tc) => cleanTestCase(tc)),
+    ...finalizeAnalysisPlan(plan, persona, codeToAnalyze, oldText, isDoc),
+
+  };
+}
+
+
+// ============================================================================
+// DEVELOPER MODE – GELİŞMİŞ ANALİZ ZEKÂSI (Senior Engineer + Architect + QA)
+// QA'nın titizliği (sorgulama, doğrulama, negatif/sınır, regresyon) korunur;
+// üstüne mimari, kök neden, güvenlik, eşzamanlılık, performans ve alternatif
+// çözüm karşılaştırması katmanları eklenir. QA planı bu fonksiyondan etkilenmez.
+// ============================================================================
+
+function finalizeAnalysisPlan(
+  plan: GeneratedPlan,
+  persona: "qa" | "developer",
+  code: string,
+  oldText: string,
+  isDoc: boolean
+): { overview: string; totalTestCount: number; criticalTestCount: number; testCases: TestCase[] } {
+  let testCases = plan.testCases;
+  let overview = plan.overview;
+
+  if (persona === "developer") {
+    const extra = isDoc
+      ? buildDeveloperDocumentDeepCases(code, oldText)
+      : buildDeveloperCodeDeepCases(code, oldText);
+    testCases = [...plan.testCases, ...extra.cases];
+    overview = `${plan.overview} [Derin Analiz] ${extra.summary}`;
+  }
+
+  // Kural 1 & 2: Tekrar eden test senaryolarını birleştir, uygulama adımlarını konsolide et
+  const cleaned = deduplicateAndMergeTestCases(
+    testCases,
+    false,
+    persona === "developer" ? "DEV-TC" : "QA-TC"
+  );
+  const criticalTestCount = cleaned.filter(
+    (t) => t.priority.includes("Kritik") || t.priority.includes("Yüksek")
+  ).length;
+
+  return {
+    overview: cleanOverview(overview),
+    totalTestCount: cleaned.length,
+    criticalTestCount,
+    testCases: cleaned,
+  };
+}
+
+interface DeepAnalysisResult {
+  cases: TestCase[];
+  summary: string;
+}
+
+function buildDeveloperCodeDeepCases(code: string, oldText: string): DeepAnalysisResult {
+  const cases: TestCase[] = [];
+  const findings: string[] = [];
+  let n = 1;
+  const nextId = () => `DEV-A${String(n++).padStart(2, "0")}`;
+
+  let entityNames: string[] = [];
+  try {
+    entityNames = parseCodeEntities(code)
+      .map((e) => e.name)
+      .filter(Boolean)
+      .slice(0, 4);
+  } catch {
+    entityNames = [];
+  }
+  const subject = entityNames.length > 0 ? entityNames.join(", ") : "İncelenen Kod Bloğu";
+
+  const has = (re: RegExp) => re.test(code);
+
+  // --- D. Güvenlik ---
+  if (has(/eval\s*\(|new Function\s*\(|innerHTML|dangerouslySetInnerHTML|child_process|\bexec\s*\(|\bsystem\s*\(/i)) {
+    findings.push("dinamik kod/komut yürütme");
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: "Dinamik Kod / Komut Yürütme ve Injection Direnci",
+      type: "Güvenlik Testi (Injection)",
+      priority: "Kritik",
+      preconditions: "Kodda eval/exec/innerHTML benzeri dinamik yürütme noktaları tespit edildi. Varsayım: girdi kullanıcıdan gelebilir.",
+      steps: [
+        "Adım 1: Dinamik yürütme noktasına ulaşan tüm girdi kaynaklarını (parametre, body, query, dosya) izleyin (taint analizi).",
+        "Adım 2: Payload'larla (`'; DROP TABLE x;--`, `<script>alert(1)</script>`, `$(whoami)`) çağırın.",
+        "Adım 3: Girdinin yürütülmeden önce whitelist/encode/parametrik sorgu ile temizlendiğini doğrulayın.",
+      ],
+      expectedResult: "Hiçbir payload yürütülmez; girdi reddedilir veya güvenli şekilde kaçışlanır; olay loglanır.",
+    });
+  }
+  if (has(/(?:query|execute|raw)\s*\(\s*[`'"][^`'"]*(?:SELECT|INSERT|UPDATE|DELETE)[^`'"]*(?:\$\{|['"]\s*\+)/i) || has(/(SELECT|UPDATE|DELETE)[^;\n]*\+\s*\w+/i)) {
+    findings.push("string birleştirmeyle SQL oluşturma");
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: "SQL Sorgusu Parametrizasyonu ve SQL Injection Kontrolü",
+      type: "Güvenlik Testi (SQL Injection)",
+      priority: "Kritik",
+      preconditions: "Sorgu metni değişken birleştirilerek üretiliyor olabilir.",
+      steps: [
+        "Adım 1: Sorguya giren her değişkeni belirleyin.",
+        "Adım 2: `' OR '1'='1` ve `1; DROP TABLE users` değerleriyle çağırın.",
+        "Adım 3: Prepared statement / ORM parametre bağlama kullanıldığını ve sorgu planının değişmediğini doğrulayın.",
+      ],
+      expectedResult: "Girdi veri olarak ele alınır; sorgu yapısı değişmez; yetkisiz veri dönmez.",
+    });
+  }
+  if (has(/password|secret|token|api[_-]?key|authorization|bearer|credential/i)) {
+    findings.push("hassas veri / kimlik bilgisi işleme");
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: "Hassas Veri Sızıntısı, Loglama ve Yetki Sınırı Doğrulaması",
+      type: "Güvenlik Testi (Data Exposure & AuthZ)",
+      priority: "Kritik",
+      preconditions: "Kod parola/token/anahtar benzeri alanlarla çalışıyor.",
+      steps: [
+        "Adım 1: Hassas alanların log, hata mesajı ve API yanıtında düz metin geçmediğini inceleyin.",
+        "Adım 2: Başka bir kullanıcının kaynağına erişim denemesi yapın (IDOR) ve süresi dolmuş/geçersiz token ile çağırın.",
+        "Adım 3: Hassas değerlerin sabit (hard-coded) olmadığını ve ortam değişkeni/secret manager'dan okunduğunu doğrulayın.",
+      ],
+      expectedResult: "Hassas veri hiçbir çıktıya sızmaz; yetkisiz erişim 401/403 ile reddedilir; secret'lar koda gömülü değildir.",
+    });
+  }
+
+  // --- E. Eşzamanlılık & asenkron ---
+  if (has(/async\s|await\s|Promise|\.then\(|setTimeout|setInterval|Task<|Thread|lock\s*\(|Mutex|Semaphore|fetch\(|axios/i)) {
+    findings.push("asenkron / eşzamanlı akış");
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: "Asenkron Akışta Race Condition, Timeout ve Kısmi Başarısızlık",
+      type: "Eşzamanlılık Testi (Concurrency)",
+      priority: "Yüksek",
+      preconditions: "Asenkron çağrılar mock'lanabilir; gecikme ve hata enjekte edilebilir olmalı. Varsayım: aynı kaynağa eşzamanlı istek gelebilir.",
+      steps: [
+        "Adım 1: Aynı işlemi 50 paralel istekle tetikleyin ve paylaşılan durumun (state/cache) tutarlı kaldığını doğrulayın.",
+        "Adım 2: Bağımlı servise timeout ve 5xx hatası enjekte edin; retry/backoff ve idempotency davranışını doğrulayın.",
+        "Adım 3: Zincirin ortasında hata oluştuğunda yarım kalan değişikliklerin geri alındığını (compensation/rollback) doğrulayın.",
+        "Adım 4: Await edilmeyen promise veya yakalanmayan rejection olmadığını kontrol edin.",
+      ],
+      expectedResult: "Yarış durumu, çift işlem veya veri bozulması oluşmaz; hatalar kontrollü işlenir; sistem tutarlı durumda kalır.",
+    });
+  }
+
+  // --- E. Performans ---
+  const nestedLoop = /for\s*\([^)]*\)[\s\S]{0,300}for\s*\(|while\s*\([^)]*\)[\s\S]{0,300}(?:for|while)\s*\(|\.map\([^)]*\)[\s\S]{0,200}\.(?:find|filter|includes|indexOf)\(/i.test(code);
+  const loopWithIo = /(?:for|while|forEach|\.map)[\s\S]{0,250}(?:await\s|findMany|findUnique|query\(|fetch\(|SELECT)/i.test(code);
+  if (nestedLoop || loopWithIo) {
+    findings.push(loopWithIo ? "döngü içinde I/O (N+1 riski)" : "iç içe döngü (O(n²) riski)");
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: loopWithIo ? "Döngü İçi I/O (N+1) ve Ölçeklenme Analizi" : "Algoritmik Karmaşıklık ve Büyük Veri Performansı",
+      type: "Performans Testi (Scalability)",
+      priority: "Yüksek",
+      preconditions: "Büyük hacimli (10³, 10⁴, 10⁵ kayıt) test verisi hazırlanmalı.",
+      steps: [
+        "Adım 1: Girdi boyutunu 10x artırarak süre ve bellek ölçümü alın; büyüme eğrisini (doğrusal / karesel) belirleyin.",
+        loopWithIo
+          ? "Adım 2: Döngü içindeki sorgu/çağrı sayısını sayın; toplu sorgu (batch/join/IN) alternatifiyle karşılaştırın."
+          : "Adım 2: İç içe aramayı Map/Set tabanlı indeksleme ile karşılaştırın.",
+        "Adım 3: Boş liste, tek eleman ve çok büyük liste için davranışı doğrulayın.",
+      ],
+      expectedResult: "Süre girdi boyutuyla kabul edilebilir oranda büyür; gereksiz I/O yoktur; bellek kullanımı sınırlıdır.",
+    });
+  }
+
+  // --- C. Hata yönetimi ---
+  const tryCount = (code.match(/\btry\s*\{|\btry:/g) || []).length;
+  const throwCount = (code.match(/\bthrow\b|\braise\b/g) || []).length;
+  const emptyCatch = /catch\s*(?:\([^)]*\))?\s*\{\s*\}/.test(code);
+  if (tryCount === 0 && has(/await\s|fetch\(|readFile|writeFile|JSON\.parse|parseInt|\.query\(/)) {
+    findings.push("hata yakalama eksikliği");
+  }
+  cases.push({
+    id: nextId(),
+    targetComponent: subject,
+    title: "Hata Yayılımı, Exception Yolları ve Hata Mesajı Sözleşmesi",
+    type: "Negatif & Hata Yönetimi Testi",
+    priority: tryCount === 0 || emptyCatch ? "Yüksek" : "Orta",
+    preconditions: `Kodda ${tryCount} try/catch bloğu ve ${throwCount} throw/raise ifadesi tespit edildi.${emptyCatch ? " Boş catch bloğu bulundu (hata yutuluyor olabilir)." : ""}`,
+    steps: [
+      "Adım 1: Her dış bağımlılık çağrısını (I/O, ağ, parse) başarısız olacak şekilde mock'layın.",
+      "Adım 2: Hatanın yutulmadığını, anlamlı bir hata tipiyle üst katmana taşındığını ve kök nedenin (cause) korunduğunu doğrulayın.",
+      "Adım 3: Kullanıcıya dönen mesajda iç detay (stack trace, SQL, dosya yolu) bulunmadığını teyit edin.",
+      "Adım 4: Finally/dispose yollarında kaynakların (bağlantı, dosya, timer) serbest bırakıldığını doğrulayın.",
+    ],
+    expectedResult: "Tüm hata yolları tanımlıdır; hata yutulmaz, sızdırılmaz ve kaynak sızıntısı oluşmaz.",
+  });
+
+  // --- F. Geriye dönük uyumluluk / regresyon (önceki sürüm varsa) ---
+  if (oldText && oldText.trim().length > 0) {
+    let removed: string[] = [];
+    try {
+      const oldNames = parseCodeEntities(oldText).map((e) => e.name);
+      const newNames = new Set(parseCodeEntities(code).map((e) => e.name));
+      removed = oldNames.filter((nm) => nm && !newNames.has(nm)).slice(0, 5);
+    } catch {
+      removed = [];
+    }
+    if (removed.length > 0) findings.push(`kaldırılan/yeniden adlandırılan semboller (${removed.join(", ")})`);
+    cases.push({
+      id: nextId(),
+      targetComponent: subject,
+      title: "Geriye Dönük Uyumluluk ve Breaking Change Regresyonu",
+      type: "Regresyon Testi (Backward Compatibility)",
+      priority: removed.length > 0 ? "Kritik" : "Yüksek",
+      preconditions: `Önceki sürüm mevcut.${removed.length > 0 ? ` Kaldırılan/değişen semboller: ${removed.join(", ")}.` : ""}`,
+      steps: [
+        "Adım 1: Eski sürüme ait testleri ve tüketici (çağıran) kodları yeni sürüm üzerinde çalıştırın.",
+        "Adım 2: Metot imzası, dönüş tipi, hata davranışı ve veri/şema formatındaki farkları listeleyin.",
+        removed.length > 0
+          ? `Adım 3: Kaldırılan semboller (${removed.join(", ")}) için tüm çağrı noktalarını arayın ve geçiş (deprecation) planını doğrulayın.`
+          : "Adım 3: Davranış değişikliği olan her noktada eski girdilerle aynı çıktının üretildiğini doğrulayın.",
+      ],
+      expectedResult: "Mevcut tüketiciler değişmeden çalışır veya breaking change bilinçli olarak belgelenmiş ve göç yolu sağlanmıştır.",
+    });
+  }
+
+  // --- G. Alternatif çözümler / mimari karar ---
+  cases.push({
+    id: nextId(),
+    targetComponent: subject,
+    title: "Alternatif Teknik Yaklaşımların Karşılaştırması ve Önerilen Çözüm Doğrulaması",
+    type: "Mimari Karar Analizi",
+    priority: "Orta",
+    preconditions: "Mevcut uygulama ve en az iki alternatif yaklaşım (örn. mevcut inline mantık vs. katmanlı/strateji tabanlı tasarım) belirlenmiş olmalı.",
+    steps: [
+      "Adım 1: Mevcut çözümün varsayımlarını (girdi biçimi, ölçek, bağımlılıklar) yazılı hale getirin ve her birini kanıtla doğrulayın.",
+      "Adım 2: En az iki alternatifi karmaşıklık, performans, test edilebilirlik, bakım maliyeti ve risk açısından karşılaştırın.",
+      "Adım 3: Seçilen çözümün mevcut mimariyle (katman sınırları, bağımlılık yönü, veri akışı) çelişmediğini doğrulayın.",
+      "Adım 4: Seçimin gerekçesini ve geri dönüş (rollback) planını kaydedin.",
+    ],
+    expectedResult: "Seçilen çözüm gerekçeli, mevcut sistemle tutarlı ve alternatiflerine göre avantajları belgelenmiştir.",
+  });
+
+  // --- H. Sürdürülebilirlik / gözlemlenebilirlik ---
+  cases.push({
+    id: nextId(),
+    targetComponent: subject,
+    title: "Test Edilebilirlik, Gözlemlenebilirlik ve Teknik Borç Değerlendirmesi",
+    type: "Sürdürülebilirlik Analizi",
+    priority: "Orta",
+    preconditions: "Kod gözden geçirme ortamı ve statik analiz araçları (lint, tip kontrolü) hazır olmalı.",
+    steps: [
+      "Adım 1: Bağımlılıkların enjekte edilebilir olduğunu (mock'lanabilirlik) ve sabit kodlanmış (hard-coded) değer bulunmadığını doğrulayın.",
+      "Adım 2: Kritik karar ve hata noktalarında yapılandırılmış log/metrik üretildiğini kontrol edin.",
+      "Adım 3: Fonksiyon uzunluğu, döngüsel karmaşıklık ve tekrar eden mantığı (DRY) değerlendirin; refactor gerektiren alanları listeleyin.",
+    ],
+    expectedResult: "Kod birim test edilebilir, izlenebilir ve genişletilmeye uygundur; teknik borç noktaları belirlenmiş ve önceliklendirilmiştir.",
+  });
+
+  const summary = findings.length > 0
+    ? `Statik sezgisel analiz şu riskleri tespit etti: ${findings.join("; ")}. Güvenlik, eşzamanlılık, performans, hata yönetimi, uyumluluk ve mimari karar boyutlarında ${cases.length} ek derin senaryo üretildi.`
+    : `Belirgin bir anti-pattern saptanmadı; yine de hata yönetimi, mimari karar ve sürdürülebilirlik boyutlarında ${cases.length} ek derin senaryo üretildi.`;
+
+  return { cases, summary };
+}
+
+function buildDeveloperDocumentDeepCases(doc: string, oldText: string): DeepAnalysisResult {
+  const cases: TestCase[] = [];
+  let n = 1;
+  const nextId = () => `DEV-A${String(n++).padStart(2, "0")}`;
+  const hasOld = !!oldText && oldText.trim().length > 0;
+  const target = "Gereksinim Bütünlüğü ve Teknik Tasarım";
+
+  cases.push({
+    id: nextId(),
+    targetComponent: target,
+    title: "Gereksinimlerde Belirsizlik, Çelişki ve Eksik Varsayım Analizi",
+    type: "Mantıksal Tutarlılık Analizi",
+    priority: "Kritik",
+    preconditions: "Doküman/prompt tamamen okunmuş ve kural maddeleri çıkarılmış olmalı.",
+    steps: [
+      "Adım 1: Her kural maddesini 'girdi → işlem → çıktı' üçlüsü olarak yazın; eksik olan halkaları işaretleyin.",
+      "Adım 2: Maddeleri çift çift karşılaştırarak birbiriyle çelişen veya öncelik belirtilmemiş kuralları listeleyin.",
+      "Adım 3: Örtük varsayımları (ölçek, kullanıcı rolü, zaman dilimi, para birimi, veri formatı) açık hale getirip onaylatın.",
+    ],
+    expectedResult: "Çelişki ve belirsizlik kalmaz; tüm varsayımlar açıkça yazılı ve onaylıdır.",
+  });
+  cases.push({
+    id: nextId(),
+    targetComponent: target,
+    title: "Veri Akışı, Durum Geçişleri ve Sistem Sınırı Modellemesi",
+    type: "Mimari Doğrulama",
+    priority: "Yüksek",
+    preconditions: "Dokümandaki varlıklar (entity) ve aktörler belirlenmiş olmalı.",
+    steps: [
+      "Adım 1: Verinin sistemde hangi katmanlardan geçtiğini (UI, API, servis, depolama, harici sistem) çizin.",
+      "Adım 2: Her varlık için geçerli durumları ve geçişleri (state machine) çıkarın; geçersiz geçişlerin reddedildiğini doğrulayın.",
+      "Adım 3: Harici bağımlılıkların hata/gecikme durumunda sistemin davranışını (fallback, retry, circuit breaker) tanımlayın.",
+    ],
+    expectedResult: "Veri akışı ve durum modeli eksiksizdir; geçersiz geçişler ve harici hata durumları tanımlıdır.",
+  });
+  cases.push({
+    id: nextId(),
+    targetComponent: target,
+    title: "Güvenlik, Yetkilendirme ve Veri Gizliliği Gereksinimlerinin Kapsam Kontrolü",
+    type: "Güvenlik Analizi",
+    priority: "Yüksek",
+    preconditions: "Rol ve veri sınıflandırması dokümanda veya varsayımlarda belirtilmiş olmalı.",
+    steps: [
+      "Adım 1: Her işlem için kimin yetkili olduğunu ve yetkisiz erişimde beklenen yanıtı belirleyin.",
+      "Adım 2: Kişisel/hassas verilerin saklama, maskeleme ve loglama kurallarını doğrulayın.",
+      "Adım 3: Girdi doğrulama ve oran sınırlama (rate limit) gereksinimlerinin tanımlı olduğunu kontrol edin.",
+    ],
+    expectedResult: "Yetki, gizlilik ve girdi doğrulama gereksinimleri eksiksiz tanımlıdır; açık bırakılan alan yoktur.",
+  });
+  cases.push({
+    id: nextId(),
+    targetComponent: target,
+    title: "Fonksiyonel Olmayan Gereksinimler: Performans, Ölçek ve Hata Toleransı",
+    type: "Performans & Dayanıklılık Analizi",
+    priority: "Orta",
+    preconditions: "Beklenen kullanıcı sayısı ve veri hacmi (veya varsayımı) belirlenmiş olmalı.",
+    steps: [
+      "Adım 1: Beklenen yük (eşzamanlı kullanıcı, istek/sn, veri boyutu) için ölçülebilir hedefler (p95 gecikme, hata oranı) tanımlayın.",
+      "Adım 2: Eşzamanlı güncellemelerde veri tutarlılığı ve idempotency gereksinimini doğrulayın.",
+      "Adım 3: Kısmi arıza durumlarında kabul edilebilir bozulma (graceful degradation) davranışını tanımlayın.",
+    ],
+    expectedResult: "Performans, ölçek ve dayanıklılık hedefleri ölçülebilir biçimde tanımlıdır.",
+  });
+  if (hasOld) {
+    cases.push({
+      id: nextId(),
+      targetComponent: target,
+      title: "Önceki Sürüme Göre Değişikliklerin Etki ve Geriye Dönük Uyumluluk Analizi",
+      type: "Regresyon & Etki Analizi",
+      priority: "Yüksek",
+      preconditions: "Önceki doküman sürümü mevcut.",
+      steps: [
+        "Adım 1: Eski ve yeni sürüm arasındaki eklenen, silinen ve değişen kuralları listeleyin.",
+        "Adım 2: Değişen her kuralın etkilediği bileşenleri, verileri ve tüketicileri belirleyin.",
+        "Adım 3: Veri göçü, sürümleme ve geri dönüş (rollback) gereksinimini doğrulayın.",
+      ],
+      expectedResult: "Tüm değişikliklerin etkisi izlenebilir; breaking change varsa göç planı mevcuttur.",
+    });
+  }
+  cases.push({
+    id: nextId(),
+    targetComponent: target,
+    title: "Alternatif Tasarım Yaklaşımlarının Karşılaştırması ve Uzun Vadeli Sürdürülebilirlik",
+    type: "Mimari Karar Analizi",
+    priority: "Orta",
+    preconditions: "Dokümanın hedeflediği çözüm için en az iki uygulanabilir tasarım alternatifi belirlenmiş olmalı.",
+    steps: [
+      "Adım 1: Alternatifleri karmaşıklık, maliyet, risk, test edilebilirlik ve genişletilebilirlik kriterleriyle karşılaştırın.",
+      "Adım 2: Seçilen yaklaşımın mevcut sistem mimarisiyle uyumunu doğrulayın.",
+      "Adım 3: Gelecekteki değişiklikler (yeni rol, yeni entegrasyon, ölçek artışı) için genişleme noktalarını belirleyin.",
+    ],
+    expectedResult: "Seçilen tasarım gerekçelidir, mevcut sistemle uyumludur ve uzun vadeli geliştirmeye açıktır.",
+  });
+
+  return {
+    cases,
+    summary: `Gereksinim bütünlüğü, veri akışı, güvenlik, fonksiyonel olmayan gereksinimler${hasOld ? ", sürüm etkisi" : ""} ve alternatif tasarım boyutlarında ${cases.length} ek derin senaryo üretildi.`,
   };
 }

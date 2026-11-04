@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -11,14 +11,17 @@ import {
   Checkbox,
   LinearProgress,
   TextField,
+  CircularProgress,
 } from "@mui/material";
 import { TestPlanResult } from "../types";
+import { api } from "../services/api";
 import {
   cleanTitle,
   cleanStepText,
   formatStepForDisplay,
   deduplicateSteps,
 } from "../utils/titleCleaner";
+import { ExportAutomationModal } from "./ExportAutomationModal";
 
 interface TestExecutionViewProps {
   plan: TestPlanResult;
@@ -60,13 +63,80 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
 
   const [filter, setFilter] = useState<"all" | "pending" | "passed" | "failed" | "blocked">("all");
   const [reportCopied, setReportCopied] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"synced" | "saving" | "offline">("synced");
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const isInitialLoad = useRef(true);
+  const saveDebounceTimer = useRef<any>(null);
 
-  // Değişiklikleri otomatik yerel hafızaya kaydet
+  // Backend'den mevcut koşum durumunu çek ve yerel durumla harmanla
+  useEffect(() => {
+    let isMounted = true;
+    api.getTestExecution(plan.id).then((serverData) => {
+      if (!isMounted || !serverData?.executionState) return;
+      setExecState((prev) => {
+        const merged = { ...prev };
+        Object.entries(serverData.executionState).forEach(([tcId, val]: [string, any]) => {
+          if (val) {
+            merged[tcId] = {
+              status: val.status || "pending",
+              completedSteps: Array.isArray(val.completedSteps) ? val.completedSteps : [],
+              notes: val.notes || "",
+              executedAt: val.executedAt,
+            };
+          }
+        });
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(merged));
+        } catch {}
+        return merged;
+      });
+      setSyncStatus("synced");
+    }).catch(() => {
+      // Çevrimdışı / disk modu
+      setSyncStatus("synced");
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [plan.id, storageKey]);
+
+  // Değişiklikleri otomatik yerel hafızaya ve backend'e kaydet (Debounced)
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(execState));
     } catch {}
-  }, [execState, storageKey]);
+
+    if (isInitialLoad.current) {
+      isInitialLoad.current = false;
+      return;
+    }
+
+    setSyncStatus("saving");
+    if (saveDebounceTimer.current) {
+      clearTimeout(saveDebounceTimer.current);
+    }
+
+    saveDebounceTimer.current = setTimeout(async () => {
+      try {
+        const hasExecuted = Object.values(execState).some((s) => s.status !== "pending");
+        const allPassed = Object.values(execState).length > 0 && Object.values(execState).every((s) => s.status === "passed");
+        const anyFailed = Object.values(execState).some((s) => s.status === "failed");
+        const overallStatus = allPassed ? "passed" : anyFailed ? "failed" : hasExecuted ? "in_progress" : "pending";
+
+        await api.saveTestExecution(plan.id, execState, overallStatus);
+        setSyncStatus("synced");
+      } catch {
+        setSyncStatus("offline");
+      }
+    }, 800);
+
+    return () => {
+      if (saveDebounceTimer.current) {
+        clearTimeout(saveDebounceTimer.current);
+      }
+    };
+  }, [execState, plan.id, storageKey]);
 
   // Durum Güncelleme
   const setStatus = (tcId: string, status: TestStatus) => {
@@ -178,6 +248,26 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
     }
   };
 
+  // Toplu Eylem: Tümünü Başarılı (Passed) Olarak İşaretle
+  const handleMarkAllPassed = () => {
+    const updated: ExecutionState = {};
+    const nowTime = new Date().toLocaleTimeString("tr-TR");
+    plan.testCases.forEach((tc) => {
+      updated[tc.id] = {
+        status: "passed",
+        completedSteps: tc.steps.map((_, i) => i),
+        notes: execState[tc.id]?.notes || "Toplu koşum ile doğrulandı.",
+        executedAt: nowTime,
+      };
+    });
+    setExecState(updated);
+  };
+
+  // Yazdır / PDF Çıktısı Al
+  const handlePrint = () => {
+    window.print();
+  };
+
   return (
     <Box>
       {/* Üst Bar */}
@@ -202,14 +292,65 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
           ← Üretilen Test Planlarına Geri Dön
         </Button>
 
-        <Stack direction="row" spacing={1.5} flexWrap="wrap">
+        <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap">
+          {syncStatus === "saving" && (
+            <Chip
+              size="small"
+              icon={<CircularProgress size={12} color="inherit" />}
+              label="Buluta Kaydediliyor..."
+              sx={{ background: "rgba(99, 102, 241, 0.2)", color: "#a5b4fc", border: "1px solid rgba(99, 102, 241, 0.4)" }}
+            />
+          )}
+          {syncStatus === "synced" && (
+            <Chip
+              size="small"
+              label="🟢 Bulutla Senkronize"
+              sx={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)" }}
+            />
+          )}
+          {syncStatus === "offline" && (
+            <Chip
+              size="small"
+              label="💾 Yerel Depoda Korunuyor"
+              sx={{ background: "rgba(245, 158, 11, 0.15)", color: "#fbbf24", border: "1px solid rgba(245, 158, 11, 0.3)" }}
+            />
+          )}
+
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleMarkAllPassed}
+            sx={{
+              textTransform: "none",
+              color: "#34d399",
+              borderColor: "rgba(16, 185, 129, 0.4)",
+              "&:hover": { borderColor: "#10b981", background: "rgba(16, 185, 129, 0.1)" },
+            }}
+          >
+            ✅ Tümünü Geçti Yap
+          </Button>
+
           <Button
             size="small"
             variant="outlined"
             onClick={handleResetAll}
             sx={{ textTransform: "none", color: "#94a3b8", borderColor: "rgba(255,255,255,0.15)" }}
           >
-            🔄 Sonuçları Sıfırla
+            🔄 Sıfırla
+          </Button>
+
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handlePrint}
+            sx={{
+              textTransform: "none",
+              color: "#e2e8f0",
+              borderColor: "rgba(255, 255, 255, 0.2)",
+              "&:hover": { borderColor: "#38bdf8", color: "#38bdf8" },
+            }}
+          >
+            🖨️ Yazdır / PDF
           </Button>
 
           <Button
@@ -222,6 +363,20 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
             }}
           >
             {reportCopied ? "✓ Rapor Kopyalandı!" : "📊 Koşum Raporunu Kopyala"}
+          </Button>
+
+          <Button
+            variant="outlined"
+            onClick={() => setExportModalOpen(true)}
+            sx={{
+              textTransform: "none",
+              fontWeight: 700,
+              borderColor: "rgba(99, 102, 241, 0.5)",
+              color: "#a5b4fc",
+              "&:hover": { borderColor: "#818cf8", background: "rgba(99, 102, 241, 0.1)" },
+            }}
+          >
+            ⚡ Otomasyon Kodu
           </Button>
         </Stack>
       </Stack>
@@ -554,6 +709,12 @@ export const TestExecutionView: React.FC<TestExecutionViewProps> = ({
           );
         })}
       </Stack>
+
+      <ExportAutomationModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        plan={plan}
+      />
     </Box>
   );
 };

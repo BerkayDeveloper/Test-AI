@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { generateUniversalTestPlan } from "../services/testPlanGenerator";
 import { aiService } from "../services/aiService";
 import { dbService } from "../services/dbService";
-import { cleanTitle, cleanTestCase, cleanStepText } from "../utils/titleCleaner";
+import { cleanTitle, cleanTestCase, cleanStepText, deduplicateAndMergeTestCases } from "../utils/titleCleaner";
 
 export const analysisController = {
   // POST /api/analyze
@@ -25,12 +25,18 @@ export const analysisController = {
         return res.status(400).json({ error: "Lütfen bir değişiklik veya görev başlığı girin." });
       }
 
-      if (!newContent || typeof newContent !== "string" || newContent.trim().length === 0) {
-        return res.status(400).json({ error: "Lütfen değişiklik içeriğini (kod, prompt veya yüklenen doküman metni) girin." });
+      const rawPrev = typeof previousContent === "string" ? previousContent : "";
+      const rawNew = typeof newContent === "string" ? newContent : "";
+
+      // Developer ve QA modlarında ortak kural: En az bir alanda veri olmalıdır
+      if (rawNew.trim().length === 0 && rawPrev.trim().length === 0) {
+        return res.status(400).json({ error: "Lütfen en az bir alana analiz edilecek veriyi (kod, prompt veya doküman metni) girin." });
       }
 
-      const safeOldText = typeof previousContent === "string" ? previousContent : "";
-      const safeNewText = newContent;
+      // 1. Tek veri veya Yeni Durum doluysa safeNewText olarak kullanılır
+      // 2. Önceki durum dolu ve yeni durum boş ise safeNewText olarak önceki durum atanır
+      const safeNewText = rawNew.trim().length > 0 ? rawNew : rawPrev;
+      const safeOldText = rawNew.trim().length > 0 ? rawPrev : "";
       const safeCategory = typeof category === "string" && category.trim() ? category : "code";
       const safePersona = persona === "developer" ? "developer" : "qa";
 
@@ -47,7 +53,11 @@ export const analysisController = {
         apiKey,
       });
 
-      testPlan.testCases = testPlan.testCases.map((tc) => cleanTestCase(tc, true));
+      testPlan.testCases = deduplicateAndMergeTestCases(testPlan.testCases, true);
+      testPlan.totalTestCount = testPlan.testCases.length;
+      testPlan.criticalTestCount = testPlan.testCases.filter(
+        (t) => t.priority?.includes("Kritik") || t.priority?.includes("Yüksek")
+      ).length;
 
       const riskLevel =
         testPlan.criticalTestCount >= 4 ? "CRITICAL" : testPlan.criticalTestCount >= 2 ? "HIGH" : "MEDIUM";
@@ -365,6 +375,58 @@ export const analysisController = {
       });
     } catch (error: any) {
       return res.status(500).json({ error: "Analiz güncellenemedi: " + error.message });
+    }
+  },
+
+  // GET /api/analyses/:id/execution
+  async getExecution(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "Analiz ID parametresi gereklidir." });
+      }
+
+      const execution = await dbService.getExecution(id);
+      if (!execution) {
+        return res.json({
+          exists: false,
+          analysisId: id,
+          executionState: {},
+          overallStatus: "pending",
+        });
+      }
+
+      return res.json({
+        exists: true,
+        ...execution,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: "Test koşum durumu getirilemedi: " + error.message });
+    }
+  },
+
+  // POST /api/analyses/:id/execution
+  async saveExecution(req: Request, res: Response) {
+    try {
+      const { id } = req.params;
+      const { executionState, overallStatus } = req.body;
+
+      if (!id) {
+        return res.status(400).json({ error: "Analiz ID parametresi gereklidir." });
+      }
+
+      if (!executionState || typeof executionState !== "object") {
+        return res.status(400).json({ error: "Geçerli bir executionState nesnesi gereklidir." });
+      }
+
+      const saved = await dbService.saveExecution(id, executionState, overallStatus || "in_progress");
+
+      return res.json({
+        success: true,
+        ...saved,
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: "Test koşum durumu kaydedilemedi: " + error.message });
     }
   },
 };

@@ -89,3 +89,21 @@ export interface AnalysisHistoryItem {
   persona?: "qa" | "developer";
   videoInsights?: VideoInsightItem[];
 }
+
+export type TestCaseExecutionStatus = "pending" | "passed" | "failed" | "blocked";
+
+export interface TestCaseExecutionStateItem {
+  status: TestCaseExecutionStatus;
+  completedSteps: number[];
+  notes: string;
+  executedAt?: string;
+}
+
+export interface TestExecutionRecord {
+  id?: string;
+  analysisId: string;
+  executionState: Record<string, TestCaseExecutionStateItem>;
+  overallStatus?: "pending" | "in_progress" | "passed" | "failed";
+  updatedAt?: string;
+}
+

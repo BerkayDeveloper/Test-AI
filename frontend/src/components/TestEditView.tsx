@@ -125,6 +125,58 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
     setTestCases((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Test Senaryosunu Yukarı Taşı
+  const handleMoveTestCaseUp = (index: number) => {
+    if (index === 0) return;
+    setTestCases((prev) => {
+      const updated = [...prev];
+      const temp = updated[index - 1];
+      updated[index - 1] = updated[index];
+      updated[index] = temp;
+      return updated;
+    });
+  };
+
+  // Test Senaryosunu Aşağı Taşı
+  const handleMoveTestCaseDown = (index: number) => {
+    setTestCases((prev) => {
+      if (index >= prev.length - 1) return prev;
+      const updated = [...prev];
+      const temp = updated[index + 1];
+      updated[index + 1] = updated[index];
+      updated[index] = temp;
+      return updated;
+    });
+  };
+
+  // Adımı Yukarı Taşı
+  const handleMoveStepUp = (tcIndex: number, stepIndex: number) => {
+    if (stepIndex === 0) return;
+    setTestCases((prev) => {
+      const updated = [...prev];
+      const newSteps = [...updated[tcIndex].steps];
+      const temp = newSteps[stepIndex - 1];
+      newSteps[stepIndex - 1] = newSteps[stepIndex];
+      newSteps[stepIndex] = temp;
+      updated[tcIndex] = { ...updated[tcIndex], steps: newSteps };
+      return updated;
+    });
+  };
+
+  // Adımı Aşağı Taşı
+  const handleMoveStepDown = (tcIndex: number, stepIndex: number) => {
+    setTestCases((prev) => {
+      const updated = [...prev];
+      const newSteps = [...updated[tcIndex].steps];
+      if (stepIndex >= newSteps.length - 1) return prev;
+      const temp = newSteps[stepIndex + 1];
+      newSteps[stepIndex + 1] = newSteps[stepIndex];
+      newSteps[stepIndex] = temp;
+      updated[tcIndex] = { ...updated[tcIndex], steps: newSteps };
+      return updated;
+    });
+  };
+
   // Kaydetme İşlemi
   const handleSave = async (shouldNavigateToExecute = false) => {
     if (!title.trim()) {
@@ -332,9 +384,9 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
               borderRadius: 2,
             }}
           >
-            {/* Kart Üst Başlık ve Sil Butonu */}
+            {/* Kart Üst Başlık ve Eylemler */}
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
+              <Stack direction="row" spacing={1} alignItems="center">
                 <Chip
                   label={tc.id || `TC-${index + 1}`}
                   size="small"
@@ -343,6 +395,30 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: "#e2e8f0" }}>
                   Senaryo #{index + 1}
                 </Typography>
+                <Tooltip title="Senaryoyu yukarı taşı">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={index === 0}
+                      onClick={() => handleMoveTestCaseUp(index)}
+                      sx={{ color: "#94a3b8", p: 0.5, "&:hover": { color: "#38bdf8" } }}
+                    >
+                      ▲
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <Tooltip title="Senaryoyu aşağı taşı">
+                  <span>
+                    <IconButton
+                      size="small"
+                      disabled={index === testCases.length - 1}
+                      onClick={() => handleMoveTestCaseDown(index)}
+                      sx={{ color: "#94a3b8", p: 0.5, "&:hover": { color: "#38bdf8" } }}
+                    >
+                      ▼
+                    </IconButton>
+                  </span>
+                </Tooltip>
               </Stack>
 
               <Tooltip title="Bu senaryoyu tamamen sil">
@@ -416,7 +492,7 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
 
                 <Stack spacing={1}>
                   {tc.steps.map((step, sIdx) => (
-                    <Stack key={sIdx} direction="row" spacing={1} alignItems="center">
+                    <Stack key={sIdx} direction="row" spacing={0.8} alignItems="center">
                       <Typography variant="caption" sx={{ color: "#94a3b8", minWidth: 20 }}>
                         {sIdx + 1}.
                       </Typography>
@@ -429,15 +505,43 @@ export const TestEditView: React.FC<TestEditViewProps> = ({
                           "& .MuiInputBase-input": { fontSize: "0.82rem", py: 0.8 },
                         }}
                       />
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleRemoveStep(index, sIdx)}
-                        disabled={tc.steps.length <= 1}
-                        sx={{ p: 0.5 }}
-                      >
-                        ✕
-                      </IconButton>
+                      <Tooltip title="Adımı yukarı taşı">
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={sIdx === 0}
+                            onClick={() => handleMoveStepUp(index, sIdx)}
+                            sx={{ p: 0.4, color: "#94a3b8", fontSize: "0.75rem", "&:hover": { color: "#38bdf8" } }}
+                          >
+                            ▲
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Adımı aşağı taşı">
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={sIdx === tc.steps.length - 1}
+                            onClick={() => handleMoveStepDown(index, sIdx)}
+                            sx={{ p: 0.4, color: "#94a3b8", fontSize: "0.75rem", "&:hover": { color: "#38bdf8" } }}
+                          >
+                            ▼
+                          </IconButton>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Adımı sil">
+                        <span>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleRemoveStep(index, sIdx)}
+                            disabled={tc.steps.length <= 1}
+                            sx={{ p: 0.4 }}
+                          >
+                            ✕
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Stack>
                   ))}
                 </Stack>

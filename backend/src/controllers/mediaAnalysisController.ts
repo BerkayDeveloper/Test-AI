@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { videoAnalysisService, MediaFilePayload } from "../services/videoAnalysisService";
 import { mediaScopeDetectorService } from "../services/mediaScopeDetectorService";
-import { cleanTestCase } from "../utils/titleCleaner";
+import { cleanTestCase, deduplicateAndMergeTestCases } from "../utils/titleCleaner";
 
 /**
  * QA modunda yüklenen video ve fotoğrafları yapay zeka (Gemini Vision) veya yerel analiz motoruyla
@@ -110,7 +110,11 @@ export const mediaAnalysisController = {
         clientKey
       );
 
-      result.testCases = result.testCases.map((tc) => cleanTestCase(tc, true));
+      result.testCases = deduplicateAndMergeTestCases(result.testCases, true, "QA-TC");
+      result.totalTestCount = result.testCases.length;
+      result.criticalTestCount = result.testCases.filter(
+        (t) => t.priority?.includes("Kritik") || t.priority?.includes("Yüksek")
+      ).length;
 
       const id = `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const riskLevel =

@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 import { TestPlanResult } from "../types";
 import { cleanTitle, cleanStepText, cleanOverview, formatStepForDisplay, deduplicateSteps } from "../utils/titleCleaner";
+import { ExportAutomationModal } from "./ExportAutomationModal";
 
 interface TestDetailViewProps {
   plan: TestPlanResult;
@@ -28,6 +29,7 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
   isAdmin = false,
 }) => {
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
 
   const formatPriority = (priority: string = "") => {
     const match = priority.match(/\((.*?)\)/);
@@ -272,6 +274,19 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
             >
               📊 Excel / CSV İndir
             </Button>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => setExportModalOpen(true)}
+              sx={{
+                textTransform: "none",
+                fontSize: "0.78rem",
+                fontWeight: 700,
+                background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+              }}
+            >
+              ⚡ Otomasyon Kodu Üret
+            </Button>
             {copiedFormat && (
               <Typography variant="caption" sx={{ color: "#34d399", fontWeight: 700, ml: 1 }}>
                 ✓ {copiedFormat} panoya kopyalandı!
@@ -417,6 +432,12 @@ export const TestDetailView: React.FC<TestDetailViewProps> = ({
           </Paper>
         ))}
       </Stack>
+
+      <ExportAutomationModal
+        open={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        plan={plan}
+      />
     </Box>
   );
 };

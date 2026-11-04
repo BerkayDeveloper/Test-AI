@@ -27,6 +27,10 @@ router.get("/analyses/:id", analysisController.getAnalysisById);
 router.put("/analyses/:id", analysisController.updateAnalysis);
 router.delete("/analyses/:id", analysisController.deleteAnalysis);
 
+// Test Koşum Durumu Kalıcılığı (Execution Persistence)
+router.get("/analyses/:id/execution", analysisController.getExecution);
+router.post("/analyses/:id/execution", analysisController.saveExecution);
+
 // Video / Fotoğraf Medya Analizi & Yapay Zeka Kapsam Tespiti (QA Modu - Gemini Vision)
 router.post("/detect-media-scopes", mediaAnalysisController.detectScopes);
 router.post("/analyze-media", mediaAnalysisController.analyzeMedia);

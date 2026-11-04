@@ -497,3 +497,237 @@ export function cleanTestCase(tc: any, isAdmin: boolean = false): any {
     expectedResult: cleanStepText(tc.expectedResult || "", isAdmin),
   };
 }
+
+/**
+ * Karşılaştırma için metinleri temizleyip normalize eder
+ */
+function normalizeCaseString(str: string = ""): string {
+  if (!str || typeof str !== "string") return "";
+  return str
+    .toLowerCase()
+    .replace(/^\[[^\]]*\]/g, "")
+    .replace(/^dev[-:\s_]*tc[-:\s_]*\d*[\s:.-]*/i, "")
+    .replace(/^qa[-:\s_]*tc[-:\s_]*\d*[\s:.-]*/i, "")
+    .replace(/^p\d+[\s:.-]*/i, "")
+    .replace(/[^a-z0-9çğıöşü\s]/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Başlık ve açıklamalardaki anlamlı anahtar kelimeleri çıkarır (bağlaçları eler)
+ */
+function getSignificantWords(text: string = ""): Set<string> {
+  const stopWords = new Set([
+    "ve", "veya", "ile", "için", "olan", "gibi", "kadar", "sonra", "önce", "üzere",
+    "testi", "test", "doğrulaması", "doğrulama", "kontrolü", "kontrol", "adımı", "adımları",
+    "senaryosu", "senaryo", "birim", "yürütme", "fonksiyonel", "analizi", "analiz"
+  ]);
+  const words = normalizeCaseString(text).split(" ");
+  return new Set(words.filter((w) => w.length > 2 && !stopWords.has(w)));
+}
+
+/**
+ * Test senaryosunun teknik odak konusunu (intent) tespit eder
+ */
+function detectTestIntent(tc: any): string | null {
+  const combined = ((tc.title || "") + " " + (tc.type || "") + " " + (tc.targetComponent || "")).toLowerCase();
+
+  if (combined.includes("sql") || combined.includes("injection")) return "sql_injection";
+  if (combined.includes("eval") || combined.includes("exec") || combined.includes("dinamik kod") || combined.includes("komut yürütme")) return "command_injection";
+  if (combined.includes("token") || combined.includes("jwt") || combined.includes("otp") || combined.includes("2fa") || combined.includes("yetki") || combined.includes("idor") || combined.includes("kimlik")) return "auth_token";
+  if (combined.includes("race") || combined.includes("yarış") || combined.includes("concurrency") || combined.includes("eşzaman") || combined.includes("asenkron akış") || combined.includes("timeout")) return "race_condition";
+  if (combined.includes("n+1") || combined.includes("döngü içi i/o") || combined.includes("algoritmik karmaşıklık") || combined.includes("ölçeklenme")) return "perf_scalability";
+  if (combined.includes("hata tolerans") || combined.includes("exception") || combined.includes("istisna") || combined.includes("unhandled") || combined.includes("hata yayılım")) return "error_handling";
+  if (combined.includes("constructor") || combined.includes("yaşam döngüsü") || combined.includes("lifecycle") || combined.includes("ilk durum")) return "constructor_lifecycle";
+  if (combined.includes("idempotenc") || combined.includes("çift istek") || combined.includes("çift harcama") || combined.includes("mükerrer")) return "idempotency";
+  if (combined.includes("breaking") || combined.includes("geriye dönük") || combined.includes("regresyon")) return "backward_compat";
+  if (combined.includes("alternatif") || combined.includes("mimari karar")) return "arch_decision";
+  if (combined.includes("sürdürülebilirlik") || combined.includes("teknik borç") || combined.includes("gözlemlenebilirlik")) return "sustainability";
+  if (combined.includes("sınır değer") || combined.includes("boundary") || combined.includes("kısıtlama")) return "boundary_limit";
+
+  return null;
+}
+
+/**
+ * İki metni mükerrer cümle olmadan akıllıca birleştirir
+ */
+function mergeTextWithoutDuplicate(textA: string = "", textB: string = ""): string {
+  const trimmedA = (textA || "").trim();
+  const trimmedB = (textB || "").trim();
+  if (!trimmedA) return trimmedB;
+  if (!trimmedB) return trimmedA;
+  if (trimmedA.toLowerCase().includes(trimmedB.toLowerCase())) return trimmedA;
+  if (trimmedB.toLowerCase().includes(trimmedA.toLowerCase())) return trimmedB;
+  return `${trimmedA} Ayrıca: ${trimmedB}`;
+}
+
+/**
+ * İki test senaryosunun birbirinin tekrarı olup olmadığını kontrol eder
+ */
+function areTestCasesDuplicates(a: any, b: any): boolean {
+  if (!a || !b) return false;
+
+  const normTitleA = normalizeCaseString(a.title);
+  const normTitleB = normalizeCaseString(b.title);
+
+  // 1. Birebir veya neredeyse aynı başlık
+  if (normTitleA && normTitleB) {
+    if (normTitleA === normTitleB) return true;
+    if (normTitleA.includes(normTitleB) && normTitleB.length >= 10 && normTitleB.length / normTitleA.length > 0.6) return true;
+    if (normTitleB.includes(normTitleA) && normTitleA.length >= 10 && normTitleA.length / normTitleB.length > 0.6) return true;
+
+    // Kelime kümesi benzerliği
+    const wordsA = getSignificantWords(normTitleA);
+    const wordsB = getSignificantWords(normTitleB);
+    if (wordsA.size >= 2 && wordsB.size >= 2) {
+      let common = 0;
+      wordsA.forEach((w) => {
+        if (wordsB.has(w)) common++;
+      });
+      const minSize = Math.min(wordsA.size, wordsB.size);
+      const unionSize = new Set([...wordsA, ...wordsB]).size;
+      if (common / minSize >= 0.7 || common / unionSize >= 0.55) {
+        return true;
+      }
+    }
+  }
+
+  // 2. Aynı bileşen ve aynı teknik intent
+  const targetA = normalizeCaseString(a.targetComponent);
+  const targetB = normalizeCaseString(b.targetComponent);
+  const sameTarget = targetA && targetB && (targetA === targetB || targetA.includes(targetB) || targetB.includes(targetA));
+
+  const intentA = detectTestIntent(a);
+  const intentB = detectTestIntent(b);
+
+  if (sameTarget && intentA && intentB && intentA === intentB) {
+    return true;
+  }
+
+  // 3. Spesifik global güvenlik veya mimari kontroller (tek bir planda mükerrer olmamalı)
+  if (intentA && intentB && intentA === intentB) {
+    const uniqueGlobalIntents = new Set([
+      "sql_injection",
+      "command_injection",
+      "race_condition",
+      "idempotency",
+      "perf_scalability",
+      "arch_decision",
+      "sustainability",
+      "backward_compat",
+    ]);
+    if (uniqueGlobalIntents.has(intentA)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * TEKRAR EDEN TEST ADIMLARINI BİRLEŞTİRME & ÖZGÜNLEŞTİRME MOTORU
+ * Kural 1: Her test adımı ve uygulama adımı özgün olmalı, tekrar etmemeli.
+ * Kural 2: Tekrar eden test senaryoları birleştirilerek tek bir senaryo yapılır;
+ *          tekrar etmeyen tüm uygulama adımları toplanarak o senaryoya tanımlanır.
+ */
+export function deduplicateAndMergeTestCases(
+  rawCases: any[] = [],
+  isAdmin: boolean = false,
+  defaultPrefix?: string
+): any[] {
+  if (!Array.isArray(rawCases) || rawCases.length === 0) return [];
+
+  // 1. Her senaryoyu temizle
+  const cleaned = rawCases
+    .map((c) => cleanTestCase(c, isAdmin))
+    .filter((c) => c && c.title && c.title.trim().length > 0);
+
+  const merged: any[] = [];
+
+  for (const candidate of cleaned) {
+    const matchIndex = merged.findIndex((existing) => areTestCasesDuplicates(existing, candidate));
+
+    if (matchIndex === -1) {
+      merged.push({
+        ...candidate,
+        steps: Array.isArray(candidate.steps) ? [...candidate.steps] : [],
+      });
+    } else {
+      // KURAL 2: Tekrar eden senaryoları birleştir, uygulama adımlarını topla
+      const existing = merged[matchIndex];
+
+      const combinedRawSteps = [
+        ...(Array.isArray(existing.steps) ? existing.steps : []),
+        ...(Array.isArray(candidate.steps) ? candidate.steps : []),
+      ];
+      existing.steps = deduplicateSteps(combinedRawSteps);
+
+      existing.preconditions = mergeTextWithoutDuplicate(existing.preconditions, candidate.preconditions);
+      existing.expectedResult = mergeTextWithoutDuplicate(existing.expectedResult, candidate.expectedResult);
+
+      const isCritical =
+        existing.priority?.includes("Kritik") ||
+        candidate.priority?.includes("Kritik") ||
+        existing.priority?.includes("P1") ||
+        candidate.priority?.includes("P1");
+      const isHigh =
+        existing.priority?.includes("Yüksek") ||
+        candidate.priority?.includes("Yüksek") ||
+        existing.priority?.includes("P2") ||
+        candidate.priority?.includes("P2");
+      existing.priority = isCritical ? "Kritik" : isHigh ? "Yüksek" : existing.priority || "Orta";
+
+      if (
+        candidate.title &&
+        candidate.title.length > (existing.title || "").length &&
+        !candidate.title.includes("Doğrulama Testi")
+      ) {
+        existing.title = candidate.title;
+      }
+      if (
+        candidate.targetComponent &&
+        !candidate.targetComponent.includes("Arayüz") &&
+        existing.targetComponent?.includes("Arayüz")
+      ) {
+        existing.targetComponent = candidate.targetComponent;
+      }
+    }
+  }
+
+  // KURAL 1: Farklı test senaryoları arasında birebir kopya kalan adımları özgünleştir
+  const seenStepSignatures = new Map<string, number>();
+
+  for (const tc of merged) {
+    if (!Array.isArray(tc.steps)) continue;
+    tc.steps = tc.steps.map((step: string) => {
+      const norm = normalizeCaseString(step);
+      const count = seenStepSignatures.get(norm) || 0;
+      seenStepSignatures.set(norm, count + 1);
+
+      if (count > 0) {
+        const target = tc.targetComponent || tc.title || "ilgili bileşen";
+        const cleaned = step.replace(/^adım\s*\d+[\s:.-]*/i, "").trim();
+        return `'${target}' kapsamında: ${cleaned}`;
+      }
+      return step;
+    });
+
+    tc.steps = deduplicateSteps(tc.steps);
+  }
+
+  // Sıralı ve profesyonel ID numaralandırma
+  let prefix = defaultPrefix;
+  if (!prefix && merged.length > 0) {
+    const firstId = merged[0].id || "";
+    if (firstId.startsWith("DEV-TC") || firstId.startsWith("DEV-")) prefix = "DEV-TC";
+    else if (firstId.startsWith("QA-TC") || firstId.startsWith("QA-")) prefix = "QA-TC";
+    else prefix = "TC";
+  }
+  if (!prefix) prefix = "TC";
+
+  return merged.map((tc, idx) => ({
+    ...tc,
+    id: `${prefix}-${String(idx + 1).padStart(3, "0")}`,
+  }));
+}

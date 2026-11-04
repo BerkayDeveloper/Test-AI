@@ -1,8 +1,10 @@
 import { config } from "../config";
 import { geminiCliService } from "./geminiCliService";
 import { TestPlanResult, TestCase } from "../types";
-import { cleanTitle, cleanTestCase, cleanStepText } from "../utils/titleCleaner";
+import { cleanTitle, cleanTestCase, cleanStepText, deduplicateAndMergeTestCases } from "../utils/titleCleaner";
 import { generateUniversalTestPlan } from "./testPlanGenerator";
+import { sanitizeSensitiveData } from "../utils/secretSanitizer";
+import { chunkDocument } from "../utils/documentChunker";
 
 export interface AiGeneratedTemplate {
   name: string;
@@ -340,6 +342,20 @@ export class FeatureService {
   }): Promise<TestPlanResult> {
     const { title, category, previousContent, newContent, persona, selectedScopes, customScopes, additionalNotes, apiKey } = params;
 
+    // 0. Hassas Veri (Secrets & PII) Güvenlik Maskelemesi
+    const sanitizedNew = sanitizeSensitiveData(newContent || "");
+    const sanitizedPrev = sanitizeSensitiveData(previousContent || "");
+
+    if (sanitizedNew.maskedCount > 0 || sanitizedPrev.maskedCount > 0) {
+      console.log(`🛡️ [Güvenlik] ${sanitizedNew.maskedCount + sanitizedPrev.maskedCount} adet hassas veri maskelendi:`, [
+        ...sanitizedNew.detectedTypes,
+        ...sanitizedPrev.detectedTypes,
+      ]);
+    }
+
+    const safeNewContent = sanitizedNew.sanitizedText;
+    const safePreviousContent = sanitizedPrev.sanitizedText;
+
     const keyToUse = (apiKey && apiKey.trim().length > 10)
       ? apiKey.trim()
       : (config.aiApiKey && config.aiApiKey.trim().length > 10 ? config.aiApiKey.trim() : "");
@@ -353,26 +369,61 @@ export class FeatureService {
       : "";
     const notesInfo = additionalNotes ? `\nKullanıcı Özel Notları:\n${additionalNotes}` : "";
 
-    const systemPrompt = `Sen dünyanın en yetkin Kıdemli Test ve QA Mühendisisin.
-Aşağıda verilen doküman, prompt veya kod verisini en üst seviye QA disipliniyle analiz ederek profesyonel, detaylı ve doğrudan uygulanabilir test senaryoları üret.
+    // 2. Büyük Doküman Chunking Desteği (Yeni veya Önceki veriden hangisi varsa onu analiz et)
+    const mainContent = safeNewContent.trim().length > 0 ? safeNewContent : safePreviousContent;
+    const chunks = chunkDocument(mainContent, 7500);
+    const contentToAnalyze = chunks.length > 1
+      ? `[Doküman ${chunks.length} parçaya bölündü, kritik bölümler analiz ediliyor]\n` +
+        chunks.map((c) => `--- BÖLÜM ${c.index}/${c.totalChunks} ---\n${c.content.slice(0, 3500)}`).join("\n\n")
+      : mainContent.slice(0, 8000);
+
+    const isDev = persona === "developer";
+    const idPrefix = isDev ? "DEV-TC" : "QA-TC";
+    const roleLabel = isDev ? "Developer" : "QA";
+
+    const qaIntro = `Sen dünyanın en yetkin Kıdemli Test ve QA Mühendisisin.
+Aşağıda verilen doküman, prompt veya kod verisini en üst seviye QA disipliniyle analiz ederek profesyonel, detaylı ve doğrudan uygulanabilir test senaryoları üret.`;
+
+    const devIntro = `Sen aynı anda hem Principal Software Engineer / Software Architect hem de en titiz seviyede QA Mühendisisin.
+QA disiplininin tüm titizliğini (sorgulama, doğrulama, negatif/sınır senaryolar, regresyon, kabul kriteri) KORU ve bunu bir mimarın mühendislik muhakemesiyle (kod yapısı, bağımlılıklar, veri akışı, durum yönetimi, sistem davranışı) daha derine taşı.
+Verilen doküman, prompt veya kodu yüzeysel değil KÖK NEDEN düzeyinde analiz et ve doğrudan uygulanabilir, teknik derinliği yüksek test senaryoları üret.
+
+ZORUNLU ANALİZ BOYUTLARI (içeriğe uygun olanların tamamını senaryolara yansıt):
+ A. Kök Neden & Mantıksal Tutarlılık: Varsayımları açıkça sorgula; çelişkileri, belirsizlikleri ve mevcut sistemle uyumsuzlukları yakala.
+ B. Mimari & Veri Akışı: Katmanlar arası sözleşmeler, bağımlılıklar, girdi→işleme→çıktı zinciri, durum (state) değişimleri ve yan etkiler.
+ C. Hata & Edge Case: Null/boş/sınır/aşırı büyük girdiler, hatalı format, kısmi başarısızlık, timeout, retry/idempotency, exception yolları.
+ D. Güvenlik: Injection, yetkilendirme/IDOR, hassas veri sızıntısı, girdi doğrulama, güvensiz deserialization, secret yönetimi.
+ E. Eşzamanlılık & Performans: Race condition, deadlock, N+1, gereksiz döngü/bellek, ölçeklenme, kaynak sızıntısı.
+ F. Geriye Dönük Uyumluluk & Regresyon: Önceki durumla fark (breaking change), API/şema/veri göçü etkileri.
+ G. Alternatif Çözümler: Birden fazla teknik yaklaşımı avantaj/dezavantajıyla karşılaştıran ve önerilen çözümü gerekçelendiren en az bir senaryo (type: "Mimari Karar Analizi").
+ H. Uzun Vadeli Sürdürülebilirlik: Test edilebilirlik, genişletilebilirlik, gözlemlenebilirlik (log/metric), teknik borç riskleri.`;
+
+    const systemPrompt = `${isDev ? devIntro : qaIntro}
 
 GÖREV BİLGİLERİ:
 Başlık: ${title}
 Kategori / Alan: ${category}
-Mod: ${persona === "qa" ? "Kullanıcı Deneyimi ve Fonksiyonel QA Testi" : "Geliştirici Birim ve Entegrasyon Testi"}
+Mod: ${persona === "qa" ? "Kullanıcı Deneyimi ve Fonksiyonel QA Testi" : "Gelişmiş Developer Modu (Senior Engineer + Architect + QA Titizliği): Birim, Entegrasyon, Mimari, Güvenlik, Performans ve Risk Analizi"}
 ${scopesInfo}${customScopesInfo}${notesInfo}
 
 İNCELENECEK İÇERİK (Metin / Prompt / Doküman):
-${newContent.slice(0, 8000)}
+${contentToAnalyze}
 
-${previousContent ? `Önceki Durum:\n${previousContent.slice(0, 3000)}\n` : ""}
+${safePreviousContent && safeNewContent && safePreviousContent.trim() !== safeNewContent.trim() ? `Önceki Durum:\n${safePreviousContent.slice(0, 3000)}\n` : ""}
 
 UYULMASI ZORUNLU KURALLAR:
 1. "Ekran 1", "Ekran 2", "Sayfa 1", "Adım 1" gibi genel, belirsiz veya numaralandırılmış ekran/bileşen isimlerini KESİNLİKLE KULLANMA.
 2. Hedef bileşen ve ekranları içeriğe ve işlevine göre tam ve spesifik olarak adlandır (Örn: "Kullanıcı Girişi ve Kimlik Doğrulama Formu", "Sepet Tutarı ve Kupon Hesaplama Modülü", "Profil Düzenleme ve Doğrulama Alanı").
-3. Her senaryo için net, sıralı uygulama adımları (Adım 1: ..., Adım 2: ...) ve tavizsiz beklenen sonuçlar yaz.
-4. Başlıklarda "Video" veya "Fotoğraf" kelimelerini kullanma.
-5. Yanıtını YALNIZCA geçerli bir JSON dizisi formatında ver:
+3. TEKRAR EDEN SENARYO VE UYGULAMA ADIMI YASAĞI (Çeşitlilik ve Kalite Zorunluluğu):
+   - Asla birbirinin tekrarı veya kopyası olan test senaryoları ve uygulama adımları üretme.
+   - Her test senaryosu ve her uygulama adımı, verilen veri türüne ve incelenen koda/içeriğe özgü YENİ ve ÖZGÜN bir doğrulama yapmalıdır.
+   - Benzer amaçlı doğrulamalar varsa, bunları ayrı ayrı tekrar eden senaryolar yapmak YERİNE, tekrar etmeyen tüm uygulama adımlarını bir araya getirerek TEK bir kapsamlı senaryo altında topla.
+4. Her senaryo için net, sıralı uygulama adımları (Adım 1: ..., Adım 2: ...) ve tavizsiz beklenen sonuçlar yaz.
+5. Başlıklarda "Video" veya "Fotoğraf" kelimelerini kullanma.
+${isDev ? `6. Developer modunda: her senaryo somut bir teknik riski/kök nedeni hedeflemeli; adımlar çalıştırılabilir (girdi değeri, çağrı, assert) olmalı; beklenen sonuç ölçülebilir olmalı. Genel geçer ("hatasız çalışmalı") ifadelerden kaçın.
+7. Önemli riskler (güvenlik, veri kaybı, race condition, breaking change) "Kritik"/"Yüksek" öncelik almalı. "type" alanında senaryonun boyutunu belirt (örn: "Güvenlik Testi", "Eşzamanlılık Testi", "Performans Testi", "Entegrasyon Testi", "Regresyon Testi", "Mimari Karar Analizi", "Negatif & Sınır Testi").
+8. Verilen içerikte olmayan bir şeyi uydurma; varsayım yapıyorsan ilgili senaryonun ön koşulunda "Varsayım:" olarak belirt.
+9. Yanıtını` : "6. Yanıtını"} YALNIZCA geçerli bir JSON dizisi formatında ver:
 [
   {
     "targetComponent": "Spesifik Bileşen veya Ekran Adı",
@@ -410,25 +461,27 @@ UYULMASI ZORUNLU KURALLAR:
           if (rawText) {
             const parsed = JSON.parse(rawText);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const cleanedCases = parsed.map((tc: any, idx: number) => ({
-                id: `QA-TC-${String(idx + 1).padStart(3, "0")}`,
+              const rawCases = parsed.map((tc: any) => ({
+                id: `${idPrefix}-000`,
                 targetComponent: tc.targetComponent || "Ana Arayüz Bileşeni",
-                title: cleanTitle(tc.title || `Doğrulama Testi ${idx + 1}`, true),
+                title: tc.title || "Doğrulama Testi",
                 type: tc.type || "Fonksiyonel Test",
                 testType: tc.type || "Fonksiyonel Test",
                 priority: tc.priority || "Yüksek",
-                preconditions: cleanStepText(tc.preconditions || "Sistem hazır olmalıdır.", true),
-                steps: Array.isArray(tc.steps) ? tc.steps.map((s: string) => cleanStepText(s, true)) : ["Adım 1: Arayüzü açın.", "Adım 2: Kontrolü doğrulayın."],
-                expectedResult: cleanStepText(tc.expectedResult || "İşlem başarıyla tamamlanmalıdır.", true),
+                preconditions: tc.preconditions || "Sistem hazır olmalıdır.",
+                steps: Array.isArray(tc.steps) ? tc.steps : ["Adım 1: Arayüzü/kodu hazırlayın.", "Adım 2: İşlemi assert edin."],
+                expectedResult: tc.expectedResult || "İşlem başarıyla tamamlanmalıdır.",
                 status: "Beklemede",
               }));
+
+              const cleanedCases = deduplicateAndMergeTestCases(rawCases, true, idPrefix);
 
               const criticalCount = cleanedCases.filter((t: TestCase) => t.priority === "Kritik" || t.priority === "Yüksek").length;
               return {
                 id: `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
                 title,
                 category,
-                overview: `Gemini 3.8 Flash AI Analizi: "${title}" başarıyla incelendi. ${cleanedCases.length} adet detaylı QA test senaryosu oluşturuldu.`,
+                overview: `Gemini 3.8 Flash AI Analizi: "${title}" başarıyla incelendi. ${cleanedCases.length} adet detaylı ${roleLabel} test senaryosu oluşturuldu.`,
                 detectedLanguage: "Gemini 3.8 Flash Yapay Zeka Analizi",
                 totalTestCount: cleanedCases.length,
                 criticalTestCount: criticalCount,
@@ -456,25 +509,27 @@ UYULMASI ZORUNLU KURALLAR:
           timeoutMs: 40000,
         });
         if (cliRes.success && Array.isArray(cliRes.parsedJson) && cliRes.parsedJson.length > 0) {
-          const cleanedCases = cliRes.parsedJson.map((tc: any, idx: number) => ({
-            id: `QA-TC-${String(idx + 1).padStart(3, "0")}`,
+          const rawCases = cliRes.parsedJson.map((tc: any) => ({
+            id: `${idPrefix}-000`,
             targetComponent: tc.targetComponent || "Ana Arayüz Bileşeni",
-            title: cleanTitle(tc.title || `Doğrulama Testi ${idx + 1}`, true),
+            title: tc.title || "Doğrulama Testi",
             type: tc.type || "Fonksiyonel Test",
             testType: tc.type || "Fonksiyonel Test",
             priority: tc.priority || "Yüksek",
-            preconditions: cleanStepText(tc.preconditions || "Sistem hazır olmalıdır.", true),
-            steps: Array.isArray(tc.steps) ? tc.steps.map((s: string) => cleanStepText(s, true)) : ["Adım 1: Arayüzü açın.", "Adım 2: Kontrolü doğrulayın."],
-            expectedResult: cleanStepText(tc.expectedResult || "İşlem başarıyla tamamlanmalıdır.", true),
+            preconditions: tc.preconditions || "Sistem hazır olmalıdır.",
+            steps: Array.isArray(tc.steps) ? tc.steps : ["Adım 1: Arayüzü/kodu hazırlayın.", "Adım 2: İşlemi assert edin."],
+            expectedResult: tc.expectedResult || "İşlem başarıyla tamamlanmalıdır.",
             status: "Beklemede",
           }));
+
+          const cleanedCases = deduplicateAndMergeTestCases(rawCases, true, idPrefix);
 
           const criticalCount = cleanedCases.filter((t: TestCase) => t.priority === "Kritik" || t.priority === "Yüksek").length;
           return {
             id: `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
             title,
             category,
-            overview: `Gemini 3.8 Flash CLI Analizi: "${title}" başarıyla incelendi. ${cleanedCases.length} adet detaylı QA test senaryosu oluşturuldu.`,
+            overview: `Gemini 3.8 Flash CLI Analizi: "${title}" başarıyla incelendi. ${cleanedCases.length} adet detaylı ${roleLabel} test senaryosu oluşturuldu.`,
             detectedLanguage: "Gemini 3.8 Flash CLI Analizi",
             totalTestCount: cleanedCases.length,
             criticalTestCount: criticalCount,
@@ -494,7 +549,7 @@ UYULMASI ZORUNLU KURALLAR:
 
     // 4. Kural Motoru (Çevrimdışı / Fallback)
     const fallback = generateUniversalTestPlan(title, category, previousContent, newContent, persona);
-    fallback.testCases = fallback.testCases.map((tc) => cleanTestCase(tc, true));
+    fallback.testCases = deduplicateAndMergeTestCases(fallback.testCases, true, idPrefix);
     return {
       id: `analysis-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       title,

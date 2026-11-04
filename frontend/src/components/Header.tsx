@@ -159,23 +159,99 @@ export const Header: React.FC<HeaderProps> = ({
             gap: 1,
           }}
         >
-          <span>🧪</span> AI Test Adımları & Değişiklik Analiz Motoru
+          <span>{isQa ? "🧪" : "💻"}</span> AI Test Adımları & Değişiklik Analiz Motoru
           <Chip
             size="small"
-            label="QA Modu"
+            label={isQa ? "QA Modu" : "Developer Modu"}
             sx={{
               ml: 1,
               fontWeight: 700,
               fontSize: "0.7rem",
-              background: "rgba(6, 182, 212, 0.15)",
-              color: "#38bdf8",
-              border: "1px solid rgba(6, 182, 212, 0.3)",
+              background: isQa ? "rgba(6, 182, 212, 0.15)" : "rgba(16, 185, 129, 0.15)",
+              color: isQa ? "#38bdf8" : "#34d399",
+              border: isQa ? "1px solid rgba(6, 182, 212, 0.3)" : "1px solid rgba(16, 185, 129, 0.3)",
             }}
           />
         </Typography>
 
-        {/* Sağ Üst Alan: Admin Butonu ve Info İkonu */}
+        {/* Sağ Üst Alan: QA / Developer Seçicisi, Admin Butonu ve Info İkonu */}
         <Stack direction="row" spacing={1.5} alignItems="center">
+          {/* Persona / Rol Seçim Butonları (QA & Developer) */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              p: 0.4,
+              borderRadius: 2.5,
+              background: "rgba(15, 23, 42, 0.9)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              boxShadow: "inset 0 1px 3px rgba(0, 0, 0, 0.4)",
+            }}
+          >
+            <Tooltip title="QA (Kalite Güvence) Bakış Açısı: Kullanıcı deneyimi, sınır değerler, güvenlik ve negatif test odaklı analiz">
+              <Button
+                size="small"
+                onClick={() => onPersonaChange?.("qa")}
+                sx={{
+                  px: 1.6,
+                  py: 0.45,
+                  minWidth: "auto",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  textTransform: "none",
+                  borderRadius: 2,
+                  transition: "all 0.2s ease-in-out",
+                  ...(activePersona === "qa"
+                    ? {
+                        background: "linear-gradient(90deg, #6366f1, #06b6d4)",
+                        color: "#ffffff",
+                        boxShadow: "0 2px 8px rgba(99, 102, 241, 0.45)",
+                      }
+                    : {
+                        color: "#94a3b8",
+                        "&:hover": {
+                          color: "#f1f5f9",
+                          background: "rgba(255, 255, 255, 0.05)",
+                        },
+                      }),
+                }}
+              >
+                🧪 QA Modu
+              </Button>
+            </Tooltip>
+
+            <Tooltip title="Developer (Yazılımcı) Bakış Açısı: Kod mimarisi, birim/entegrasyon testleri, API kontratları ve edge-case odaklı analiz">
+              <Button
+                size="small"
+                onClick={() => onPersonaChange?.("developer")}
+                sx={{
+                  px: 1.6,
+                  py: 0.45,
+                  minWidth: "auto",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  textTransform: "none",
+                  borderRadius: 2,
+                  transition: "all 0.2s ease-in-out",
+                  ...(activePersona === "developer"
+                    ? {
+                        background: "linear-gradient(90deg, #10b981, #06b6d4)",
+                        color: "#ffffff",
+                        boxShadow: "0 2px 8px rgba(16, 185, 129, 0.45)",
+                      }
+                    : {
+                        color: "#94a3b8",
+                        "&:hover": {
+                          color: "#f1f5f9",
+                          background: "rgba(255, 255, 255, 0.05)",
+                        },
+                      }),
+                }}
+              >
+                💻 Developer Modu
+              </Button>
+            </Tooltip>
+          </Box>
 
           {/* Yönetici (Admin) Modu Butonu */}
           <Tooltip title={isAdmin ? "👑 Yönetici (Admin) Yetkisi Aktif. Tıklayarak yönetici modundan çıkabilirsiniz." : "🛡️ Yönetici (Admin) Girişi: Saniye saniye video analiz ve sistem dökümlerine erişim sağlar."}>

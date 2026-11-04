@@ -17,3 +17,25 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+@media print {
+  header,
+  button,
+  .MuiTabs-root,
+  .no-print {
+    display: none !important;
+  }
+
+  body, #root {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  .MuiPaper-root, .MuiCard-root {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #cbd5e1 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+}

@@ -20,7 +20,6 @@ import { AddTemplateModal } from "./components/AddTemplateModal";
 import { TestDetailView } from "./components/TestDetailView";
 import { TestEditView } from "./components/TestEditView";
 import { TestExecutionView } from "./components/TestExecutionView";
-import { DeveloperAuthModal } from "./components/DeveloperAuthModal";
 import { TemplateItem, TestPlanResult, AnalysisHistoryItem } from "./types";
 import { api } from "./services/api";
 import { useAutoSaveDraft } from "./hooks/useAutoSaveDraft";
@@ -206,9 +205,8 @@ export default function App() {
   const [tabIndex, setTabIndex] = useState(0);
   const [backendStatus, setBackendStatus] = useState<"checking" | "connected" | "disconnected">("checking");
   const [dbStatus, setDbStatus] = useState<string | undefined>(undefined);
-  const [activePersona, setActivePersona] = useState<"qa" | "developer">("qa");
-  const [isDeveloperAuth, setIsDeveloperAuth] = useState(false);
-  const [devAuthModalOpen, setDevAuthModalOpen] = useState(false);
+  const [activePersona, setActivePersona] = useState<"qa" | "developer">("developer");
+  const [isDeveloperAuth, setIsDeveloperAuth] = useState(true);
 
   const isQa = activePersona === "qa";
 
@@ -358,15 +356,8 @@ export default function App() {
 
   useEffect(() => {
     loadHistory();
-    // Developer Mode oturum kontrolü (Backend doğrulaması)
-    api.getDeveloperStatus().then((status) => {
-      if (status.isDeveloper) {
-        setIsDeveloperAuth(true);
-      } else {
-        setIsDeveloperAuth(false);
-        setActivePersona("qa");
-      }
-    });
+    // Developer Mode doğrudan açık ve aktiftir
+    setIsDeveloperAuth(true);
   }, []);
 
   useEffect(() => {
@@ -459,12 +450,24 @@ export default function App() {
     apiKey?: string;
   }) => {
     const finalTitle = (customOverride?.customTitle ?? title).trim();
-    const finalNew = (customOverride?.customNewContent ?? newContent).trim();
-    const finalPrev = customOverride?.customPreviousContent ?? previousContent;
+    let finalNew = (customOverride?.customNewContent ?? newContent).trim();
+    let finalPrev = (customOverride?.customPreviousContent ?? previousContent).trim();
 
-    if (!finalTitle || !finalNew) {
-      setErrorMsg("Lütfen değişiklik başlığını ve değişiklik içeriğini (kod, prompt veya yüklenen doküman verisi) doldurun.");
+    if (!finalTitle) {
+      setErrorMsg("Lütfen analiz veya görev başlığını girin.");
       return;
+    }
+
+    // 3 Tür Veri Girişinde Ortak Özellik: En az bir alanda veri olmalıdır
+    if (!finalNew && !finalPrev) {
+      setErrorMsg("Lütfen en az bir alana analiz edilecek veriyi (kod, prompt veya yüklenen doküman verisi) doldurun.");
+      return;
+    }
+
+    // Eğer yeni durum boş fakat önceki durum doluysa, analizin sorunsuz işlemesi için ana metin olarak önceki durumu kullan
+    if (!finalNew && finalPrev) {
+      finalNew = finalPrev;
+      finalPrev = "";
     }
 
     setLoading(true);
@@ -646,19 +649,8 @@ export default function App() {
     }
   };
 
-  // Mod Değiştiğinde Persona Senkronizasyonu & Güvenli Yetkilendirme
-  const handlePersonaChange = async (newPersona: "qa" | "developer") => {
-    if (newPersona === "developer") {
-      // Backend oturum kontrolü
-      const status = await api.getDeveloperStatus();
-      if (!status.isDeveloper) {
-        setIsDeveloperAuth(false);
-        setDevAuthModalOpen(true);
-        return; // Doğrulama tamamlanana kadar developer moduna geçilmez
-      }
-      setIsDeveloperAuth(true);
-    }
-
+  // Mod Değiştiğinde Persona Senkronizasyonu
+  const handlePersonaChange = (newPersona: "qa" | "developer") => {
     setActivePersona(newPersona);
     setCategory("none"); // Mod değiştiğinde türü varsayılan olarak none yap
 
@@ -926,19 +918,6 @@ export default function App() {
             </>
           )}
         </Container>
-
-        {/* Developer Mode 2FA Kimlik Doğrulama Modalı */}
-        <DeveloperAuthModal
-          open={devAuthModalOpen}
-          onClose={() => setDevAuthModalOpen(false)}
-          onSuccess={() => {
-            setIsDeveloperAuth(true);
-            setActivePersona("developer");
-            setCategory("none");
-            setIsAdmin(true);
-            setSnackbarMsg("🎉 Developer Mode kimlik doğrulaması başarılı. Hoş geldiniz!");
-          }}
-        />
 
         {/* Şablon Ekleme ve AI Prompt Modalı */}
         <AddTemplateModal
